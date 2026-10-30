@@ -1,0 +1,77 @@
+name: minipay
+
+x-backend: &backend
+  build: ./backend
+  image: minipay-backend:local
+  restart: on-failure
+  depends_on:
+    db:
+      condition: service_healthy
+  environment: &backend-env
+    DB_HOST: db
+    DB_PORT: "5432"
+    PORTAL_URL: http://portal:8081
+    BANK_URL: http://bank:8082
+    PARTNER_URL: http://partner:8083
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: minipay
+      POSTGRES_USER: minipay
+      POSTGRES_PASSWORD: minipay
+    ports:
+      - "5433:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U minipay -d minipay"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  # KOSIGN Portal (lane KP)
+  portal:
+    <<: *backend
+    environment:
+      <<: *backend-env
+      SPRING_PROFILES_ACTIVE: portal
+      PARTNER_ENTRY_URL: http://localhost:3000/partner/movie-tickets
+      PARTNER_ALLOWED_ORIGINS: http://localhost:3000
+      PARTNER_WEBHOOK_URL: http://partner:8083/webhooks/kosign
+    ports:
+      - "8081:8081"
+
+  # Bank Server mock (lane BS)
+  bank:
+    <<: *backend
+    environment:
+      <<: *backend-env
+      SPRING_PROFILES_ACTIVE: bank
+    ports:
+      - "8082:8082"
+
+  # Partner Server mock, "Movie tickets" (lane PS)
+  partner:
+    <<: *backend
+    environment:
+      <<: *backend-env
+      SPRING_PROFILES_ACTIVE: partner
+    ports:
+      - "8083:8083"
+
+  # Next.js: partner page (PP), bank app simulator (APP) and test console
+  web:
+    build: ./web
+    image: minipay-web:local
+    restart: on-failure
+    depends_on:
+      - portal
+      - bank
+      - partner
+    ports:
+      - "3000:3000"
+
+volumes:
+  db-data:

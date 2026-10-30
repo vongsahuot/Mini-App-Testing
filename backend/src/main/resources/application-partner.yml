@@ -1,0 +1,13 @@
+server:
+  port: 8083
+
+spring:
+  jpa:
+    properties:
+      hibernate:
+        default_schema: partner
+
+mock:
+  actor: PS
+  client-id: movie-tickets
+  client-secret: ${PARTNER_SECRET:partner-secret-movie}

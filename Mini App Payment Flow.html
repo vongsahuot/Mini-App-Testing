@@ -1,0 +1,431 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Mini App Payment Flow</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: one header, a phase index, then one focused sequence lane-chart per phase, stacked */
+:root {
+  --bg: #F3F5F8;
+  --card: #FFFFFF;
+  --fg: #172033;
+  --muted: #5B6578;
+  --line: #D5DAE3;
+  --lane: #B9C1CF;
+  --head-bg: #EEF1F6;
+  --note-bg: #FFF6D9;
+  --note-line: #E3C463;
+  --device: #6A4FD0;
+  --bank: #1D6FB8;
+  --partner: #B5650C;
+  --frame: #8A93A6;
+  --new: #138A52;
+  --new-bg: #E3F5EC;
+  --font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0F1420; --card: #161D2B; --fg: #E6EAF2; --muted: #9AA4B7; --line: #2A3346;
+    --lane: #3A465E; --head-bg: #1E2738; --note-bg: #2E2914; --note-line: #7A6A2A;
+    --device: #A592FF; --bank: #5EA8EE; --partner: #E99A42; --frame: #6F7A90;
+    --new: #45C987; --new-bg: #15301F;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0F1420; --card: #161D2B; --fg: #E6EAF2; --muted: #9AA4B7; --line: #2A3346;
+  --lane: #3A465E; --head-bg: #1E2738; --note-bg: #2E2914; --note-line: #7A6A2A;
+  --device: #A592FF; --bank: #5EA8EE; --partner: #E99A42; --frame: #6F7A90;
+  --new: #45C987; --new-bg: #15301F;
+  color-scheme: dark;
+}
+body { background: var(--bg); color: var(--fg); font-family: var(--font-sans); font-size: 15px; line-height: 1.5; }
+.wrap { max-width: 1480px; margin: 0 auto; padding-block: 32px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 24px; }
+header h1 { font-size: 30px; line-height: 1.15; margin: 0 0 6px; letter-spacing: -0.01em; text-wrap: balance; }
+header p { margin: 0; color: var(--muted); max-width: 72ch; }
+.eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+/* Sticky sidebar on wide screens, sticky top bar on narrow screens */
+.layout { display: grid; grid-template-columns: 264px minmax(0, 1fr); gap: 20px; align-items: start; }
+.side { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px); max-height: calc(100vh - 32px - env(safe-area-inset-top, 0px));
+  overflow-y: auto; display: flex; flex-direction: column; gap: 12px; z-index: 5; }
+.main { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.panel { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 14px; min-width: 0; }
+.panel h2 { font-size: 12px; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); margin: 0 0 10px; font-weight: 500; }
+.index { display: flex; flex-direction: column; gap: 2px; }
+.index a { display: flex; gap: 10px; align-items: baseline; padding: 6px 8px; border-radius: 7px; color: var(--fg); text-decoration: none; border: 1px solid transparent; font-size: 13.5px; line-height: 1.35; }
+.index a:hover { background: var(--head-bg); }
+.index a:focus-visible { outline: 2px solid var(--bank); outline-offset: 1px; }
+.index a b { font-family: var(--font-mono); font-weight: 500; color: var(--muted); font-size: 12px; min-width: 18px; }
+.index a .tag { margin-left: auto; font-family: var(--font-mono); font-size: 10.5px; color: var(--new); border: 1px solid var(--new); border-radius: 999px; padding: 0 6px; white-space: nowrap; }
+.index a[aria-current="true"] { background: var(--fg); color: var(--card); }
+.index a[aria-current="true"] b { color: var(--card); opacity: 0.7; }
+.index a[aria-current="true"] .tag { color: var(--card); border-color: var(--card); }
+details.panel > summary { cursor: pointer; list-style: none; font-size: 12px; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); display: flex; align-items: center; justify-content: space-between; }
+details.panel > summary::-webkit-details-marker { display: none; }
+details.panel > summary::after { content: "+"; font-size: 15px; }
+details.panel[open] > summary::after { content: "−"; }
+details.panel[open] > summary { margin-bottom: 10px; }
+.legend { display: flex; flex-direction: column; gap: 8px; font-size: 13px; line-height: 1.35; }
+.legend div { display: flex; align-items: center; gap: 10px; }
+.legend svg { flex: none; }
+.rules { margin: 0; padding-left: 16px; color: var(--fg); font-size: 13px; line-height: 1.4; display: flex; flex-direction: column; gap: 6px; }
+.phase { background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; scroll-margin-top: 16px; }
+@media (max-width: 1100px) {
+  .layout { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+  .side { top: env(safe-area-inset-top, 0px); max-height: none; overflow: visible; gap: 8px;
+    margin-left: calc(-1 * max(16px, env(safe-area-inset-left, 0px))); margin-right: calc(-1 * max(16px, env(safe-area-inset-right, 0px)));
+    padding: 10px max(16px, env(safe-area-inset-right, 0px)) 10px max(16px, env(safe-area-inset-left, 0px));
+    background: var(--bg); border-bottom: 1px solid var(--line); flex-direction: row; flex-wrap: wrap; align-items: flex-start; }
+  .side .phases-panel { padding: 0; border: 0; background: none; flex: 1 1 100%; min-width: 0; }
+  .side .phases-panel h2 { display: none; }
+  .index { flex-direction: row; overflow-x: auto; gap: 6px; scrollbar-width: thin; padding-bottom: 2px; }
+  .index a { flex: none; border: 1px solid var(--line); background: var(--card); padding: 5px 10px; white-space: nowrap; }
+  .side details.panel { flex: 1 1 200px; padding: 8px 12px; }
+  .side details.panel[open] { flex-basis: 100%; }
+  .phase { scroll-margin-top: 150px; }
+}
+.phase-head { display: flex; gap: 12px; align-items: baseline; padding: 16px 20px 12px; flex-wrap: wrap; border-bottom: 1px solid var(--line); }
+.phase-num { font-family: var(--font-mono); font-size: 13px; color: var(--card); background: var(--fg); border-radius: 6px; padding: 2px 8px; }
+.phase-head h3 { margin: 0; font-size: 19px; }
+.steps { font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+.chip { font-family: var(--font-mono); font-size: 11.5px; color: var(--new); background: var(--new-bg); border: 1px solid var(--new); border-radius: 999px; padding: 1px 9px; }
+.phase-head p { margin: 0; color: var(--muted); font-size: 14px; flex-basis: 100%; max-width: 92ch; }
+.scroller { overflow-x: auto; }
+.scroller svg { display: block; }
+svg text { font-family: var(--font-sans); }
+.lbl { font-size: 12.5px; fill: var(--fg); paint-order: stroke; stroke: var(--card); stroke-width: 5px; stroke-linejoin: round; }
+.lbl.reply { fill: var(--muted); }
+.hname { font-size: 13px; font-weight: 600; fill: var(--fg); }
+.hsub { font-size: 11px; font-family: var(--font-mono); fill: var(--muted); }
+.hbox { fill: var(--head-bg); stroke: var(--line); }
+.dim { opacity: 0.32; }
+.life { stroke: var(--lane); stroke-width: 1.2; stroke-dasharray: 2 4; }
+.life.on { stroke-dasharray: none; }
+.notebox { fill: var(--note-bg); stroke: var(--note-line); }
+.notebox.ch { stroke: var(--new); stroke-width: 1.6; }
+.notetxt { font-size: 12px; fill: var(--fg); }
+.frame { fill: none; stroke: var(--frame); stroke-dasharray: 5 4; }
+.ftag { fill: var(--frame); }
+.ftagtxt { font-size: 11px; font-family: var(--font-mono); fill: var(--card); font-weight: 500; }
+.flbl { font-size: 12px; font-family: var(--font-mono); fill: var(--muted); }
+.badgetxt { font-size: 11px; font-family: var(--font-mono); font-weight: 500; fill: #fff; }
+.ring { fill: none; stroke: var(--new); stroke-width: 2.2; }
+footer { color: var(--muted); font-size: 13px; }
+@media (max-width: 600px) { header h1 { font-size: 24px; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Sequence · v3 native list · 10 phases · <span id="stepcount">62</span> steps</div>
+    <h1>Mini App Payment Flow</h1>
+    <p>How a customer opens a partner mini app from the bank app's native mini apps list, signs in, pays, and gets refunded if needed, across the bank app, KOSIGN Portal, the partner and the bank's payment API. Each phase is drawn on its own; lanes not used in a phase are faded. Steps outlined in green are new or changed in this version.</p>
+  </header>
+
+  <div class="layout">
+  <aside class="side">
+    <section class="panel phases-panel">
+      <h2>Phases</h2>
+      <nav class="index" id="index" aria-label="Phases"></nav>
+    </section>
+    <details class="panel" id="legendBox" open>
+      <summary>Legend</summary>
+      <div class="legend">
+        <div><svg width="54" height="10"><line x1="2" y1="5" x2="44" y2="5" stroke="var(--device)" stroke-width="2"/><path d="M44 1 L52 5 L44 9 Z" fill="var(--device)"/></svg>On device: user taps and JS bridge calls</div>
+        <div><svg width="54" height="10"><line x1="2" y1="5" x2="44" y2="5" stroke="var(--bank)" stroke-width="2"/><path d="M44 1 L52 5 L44 9 Z" fill="var(--bank)"/></svg>Bank channel: bank JWT or mTLS + signature</div>
+        <div><svg width="54" height="10"><line x1="2" y1="5" x2="44" y2="5" stroke="var(--partner)" stroke-width="2"/><path d="M44 1 L52 5 L44 9 Z" fill="var(--partner)"/></svg>Partner channel: partner page, backend, signed calls</div>
+        <div><svg width="54" height="10"><line x1="2" y1="5" x2="44" y2="5" stroke="var(--muted)" stroke-width="2" stroke-dasharray="5 4"/><path d="M44 1 L52 5 L44 9 Z" fill="var(--muted)"/></svg>Dashed line: response</div>
+        <div><svg width="54" height="24"><rect x="14" y="3" width="26" height="18" rx="9" fill="var(--bank)"/><rect x="11" y="0" width="32" height="24" rx="12" class="ring"/></svg>Green ring: new or changed after review</div>
+      </div>
+    </details>
+    <details class="panel" id="rulesBox">
+      <summary>Key rules</summary>
+      <ul class="rules">
+        <li>Bridges work only on the partner's allowlisted origins.</li>
+        <li>authCode is created at login(), after consent: one use, 60 s.</li>
+        <li>Price is set on the partner server; a repeated orderId never charges twice.</li>
+        <li>PENDING → PROCESSING happens once; stuck payments are settled by asking the bank.</li>
+        <li>The signed webhook is the source of truth, retried for 24 h; pay() is a UI hint.</li>
+        <li>A daily settlement file reconciles every transaction.</li>
+      </ul>
+    </details>
+  </aside>
+
+  <div class="main">
+  <div id="phases" style="display:flex;flex-direction:column;gap:20px"></div>
+
+  <footer>Version 3. The mini apps list is now a native screen driven by the API; the App Center WebView and its bridge are removed. Earlier review fixes kept: origin-locked bridges, lazy authCode with consent, cancel path, device-signed approval, recovery and reconciliation, refunds, replay-safe webhooks. Steps are renumbered from version 2.</footer>
+  </div>
+  </div>
+</div>
+
+<script>
+const LANES = [
+  ["U", "Customer", "User"],
+  ["APP", "Bank App", "Native"],
+  ["KP", "KOSIGN Portal", "Platform"],
+  ["PP", "Partner Page", "WebView"],
+  ["PS", "Partner Server", "Backend"],
+  ["BS", "Bank Server", "Payment API"]
+];
+const L = Object.fromEntries(LANES.map((l, i) => [l[0], i]));
+
+// flags: "r" = response (dashed), "c" = new or changed after review
+const m = (n, f, t, label, kind, flags = "") => ({ type: "msg", n, f, t, label, kind, reply: flags.includes("r"), ch: flags.includes("c") });
+const note = (n, at, label, flags = "") => ({ type: "note", n, at, label, ch: flags.includes("c") });
+const fs = (tag, label, from, to) => ({ type: "frameStart", tag, label, from, to });
+const dv = label => ({ type: "divider", label });
+const fe = () => ({ type: "frameEnd" });
+
+const PHASES = [
+  { title: "List mini apps (native)", lanes: ["U","APP","KP"],
+    blurb: "The bank app draws the list as a native screen. It shows the cached list instantly, then fetches fresh sections and banners from KOSIGN with a short-lived JWT. No WebView, no bridge, and the JWT never enters a web page.",
+    items: [
+      m("1","U","APP","Tap \"Mini apps\"","device"),
+      note("","APP","Show cached list instantly (if within cacheTtl); refresh in background","c"),
+      m("2","APP","KP","GET /api/v1/client/mini-apps (Bearer JWT, 5 min TTL, aud = KOSIGN)","bank","c"),
+      note("3","KP","Verify JWT via bank JWKS: signature, exp, iss, aud. Filter apps for this customer","c"),
+      m("4","KP","APP","Return sections, apps (appId, name, icon, badge), banners, cacheTtlSeconds","bank","rc"),
+      m("5","APP","U","Render native list: sections + banners in the order received","device","rc")
+    ]},
+  { title: "Open mini app", lanes: ["U","APP","KP","PP"],
+    blurb: "KOSIGN returns the partner URL and its allowed origins. No authCode yet. The bank app opens the partner page in a WebView and only exposes the bridges while the page stays on an allowed origin.",
+    items: [
+      m("6","U","APP","Tap mini app (e.g. \"Movie tickets\") on the native list","device","c"),
+      m("7","APP","KP","POST /api/v1/client/mini-apps/{appId}/sessions (JWT)","bank"),
+      m("8","KP","APP","Return partner URL + allowed origins list (no authCode yet)","bank","rc"),
+      m("9","APP","PP","Open WebView. Bridges (login, pay, close) only on allowed origins; other domains open in external browser","device","c")
+    ]},
+  { title: "Login & consent", lanes: ["U","APP","KP","PP","PS"],
+    blurb: "The authCode is created on demand, after the customer consents to the requested scopes. Only the partner backend can exchange it, using strong client authentication.",
+    items: [
+      m("12","PP","APP","JS bridge: login(scope: profile, phone)","device","c"),
+      m("13","APP","U","Show consent sheet: partner name + requested data (first time only)","device","c"),
+      m("14","U","APP","Tap Allow","device","c"),
+      m("15","APP","KP","POST /api/v1/client/mini-apps/{appId}/auth-codes (fresh JWT, scopes)","bank","c"),
+      note("16","KP","Issue authCode: 1 use, 60 s TTL, bound to clientId + customer + scopes","c"),
+      m("17","KP","APP","Return authCode","bank","rc"),
+      m("18","APP","PP","Resolve login() with authCode","device","rc"),
+      m("19","PP","PS","Send authCode to partner backend","partner"),
+      m("20","PS","KP","POST /api/v1/partner/oauth/token (authCode + client auth: mTLS or private_key_jwt)","partner","c"),
+      m("21","KP","PS","Burn code, return pairwise partnerCustomerId + consented fields only","partner","rc")
+    ]},
+  { title: "Pay 1 · Create (idempotent)", lanes: ["U","KP","PP","PS"],
+    blurb: "The partner server decides the price and creates a PENDING payment bound to this customer and partner. Retrying with the same orderId returns the same payment.",
+    items: [
+      m("22","U","PP","Tap \"Buy $5\"","device"),
+      m("23","PP","PS","Send itemId only (price decided on server)","partner"),
+      m("24","PS","KP","POST /api/v1/partner/payments (signed + timestamp + nonce: orderId, partnerCustomerId, amount, currency)","partner","c"),
+      note("25","KP","Same orderId + same amount → return existing payment. Different amount → 409. Otherwise save PENDING (10 min TTL, bound to customer + partner)","c"),
+      m("26","KP","PS","Return paymentId","partner","r"),
+      m("27","PS","PP","Pass paymentId to page","partner","r")
+    ]},
+  { title: "Pay 2 · Confirm (native sheet)", lanes: ["U","APP","KP","PP"],
+    blurb: "The bank app re-reads the payment with a fresh bank JWT and shows its own native sheet. Cancel is now a real API call. Approval signs the paymentId with a device-bound key.",
+    items: [
+      m("28","PP","APP","JS bridge: pay(paymentId)","device"),
+      m("29","APP","KP","GET /api/v1/client/payments/{paymentId} (fresh bank JWT)","bank"),
+      note("","KP","Check PENDING + same customer + page origin belongs to this partner","c"),
+      m("30","KP","APP","Return amount, currency, merchantName","bank","r"),
+      m("31","APP","U","Show native payment sheet (merchant, amount, debit account)","device","r"),
+      fs("alt","Customer cancels","U","PP"),
+      m("32","U","APP","Tap Cancel","device","c"),
+      m("33","APP","KP","POST /api/v1/client/payments/{paymentId}/cancel → CANCELLED","bank","c"),
+      m("34","APP","PP","Resolve pay() with CANCELLED (flow ends)","device","rc"),
+      dv("Customer approves"),
+      m("35","U","APP","Biometrics / PIN unlocks device key → signs paymentId","device","c"),
+      fe()
+    ]},
+  { title: "Pay 3 · Debit (mTLS + lock)", lanes: ["APP","KP","BS"],
+    blurb: "The bank server locks the payment atomically over mTLS, moves the money in one core-banking transaction, then reports the result and keeps retrying until KOSIGN confirms.",
+    items: [
+      m("36","APP","BS","Send paymentId, debitAccount, signed approval","bank","c"),
+      m("37","BS","KP","POST /api/v1/bank/payments/{paymentId}/lock (mTLS + signature)","bank"),
+      note("38","KP","Atomic check: PENDING + not expired + same customer → PROCESSING"),
+      m("39","KP","BS","Return amount, currency, settlement account (escrow or merchant)","bank","rc"),
+      note("40","BS","Verify signature + balance → debit customer + credit settlement account in 1 core-banking txn","c"),
+      m("41","BS","KP","POST /api/v1/bank/payments/{paymentId}/result (mTLS + signature: PAID + bankTxnId / FAILED). Idempotent by bankTxnId, retried until 200","bank","c"),
+      m("42","BS","APP","Return Done + bankTxnId (customer sees receipt)","bank","r")
+    ]},
+  { title: "Recovery & reconciliation", lanes: ["KP","PS","BS"], isNew: true,
+    blurb: "Closes the gap where money moves but the result call never arrives. KOSIGN asks the bank about stuck payments, and a daily settlement file proves every transaction matches.",
+    items: [
+      fs("loop","Every 1–2 min: payments in PROCESSING > 3 min","KP","BS"),
+      m("43","KP","BS","GET /api/v1/bank/payments/{paymentId}/status (mTLS)","bank","c"),
+      m("44","BS","KP","Return PAID + bankTxnId / FAILED / NOT_FOUND","bank","rc"),
+      note("45","KP","Apply bank's answer. Never fail PROCESSING without it. NOT_FOUND after lock timeout → FAILED","c"),
+      fe(),
+      fs("loop","Daily (e.g. 01:00)","KP","BS"),
+      m("46","BS","KP","Settlement file: every bankTxnId, amount, status","bank","c"),
+      note("47","KP","Match against payments + refunds → alert ops on any mismatch","c"),
+      m("48","KP","PS","Partner statement: paid, refunded, fees, net settlement","partner","c"),
+      fe()
+    ]},
+  { title: "Pay 4 · Notify (async + fallback check)", lanes: ["APP","KP","PP","PS"],
+    blurb: "Both branches run in parallel. The signed webhook drives delivery and is retried until the partner acknowledges it. The page's pay() result is only a UI hint.",
+    items: [
+      fs("par","Async webhook from Portal","APP","PS"),
+      m("49","KP","PS","POST {registered webhookUrl} (signed + timestamp + nonce: paymentId, orderId, amount, PAID, bankTxnId)","partner","c"),
+      note("50","PS","Verify signature, reject if older than 5 min or nonce reused, check orderId + amount → mark paid, deliver once","c"),
+      m("51","PS","KP","200 OK (stop retries)","partner","r"),
+      note("","KP","No 200 → retry with exponential backoff for up to 24 h","c"),
+      dv("UI hint + status check"),
+      m("52","APP","PP","Resolve pay() with PAID / FAILED (UI hint only)","device","r"),
+      m("53","PP","PS","Check order status","partner"),
+      fs("opt","Webhook not arrived yet","KP","PS"),
+      m("54","PS","KP","GET /api/v1/partner/payments/{paymentId} (or ?orderId=)","partner","c"),
+      m("55","KP","PS","Return status PAID, amount, bankTxnId","partner","r"),
+      fe(),
+      m("56","PS","PP","Return \"Delivered\" → page shows ticket","partner","r"),
+      fe()
+    ]},
+  { title: "Refund", lanes: ["KP","PS","BS"], isNew: true,
+    blurb: "Partner-initiated full or partial refund. Signed, idempotent by refundId, and reported back by webhook the same way as a payment.",
+    items: [
+      m("57","PS","KP","POST /api/v1/partner/payments/{paymentId}/refunds (signed: refundId, amount, reason)","partner","c"),
+      note("58","KP","Idempotent by refundId. Check PAID + amount ≤ remaining → REFUND_PENDING","c"),
+      m("59","KP","BS","POST /api/v1/bank/refunds (mTLS + signature: refundId, bankTxnId, amount)","bank","c"),
+      note("60","BS","Debit settlement account + credit customer in 1 core-banking txn","c"),
+      m("61","BS","KP","Return REFUNDED + refundTxnId / FAILED (retried until 200)","bank","rc"),
+      m("62","KP","PS","Webhook: refund.succeeded / refund.failed (signed + timestamp + nonce)","partner","c")
+    ]},
+  { title: "Close", lanes: ["APP","PP"],
+    blurb: "The partner page asks to close (or the user taps X) and the customer lands back on the native mini apps list.",
+    items: [
+      m("63","PP","APP","JS bridge: close() (or user taps X)","device"),
+      m("64","APP","APP","","device")
+    ]}
+];
+// Step 64 is a self-action; replace with a note so it reads clearly
+PHASES[PHASES.length - 1].items[1] = note("64","APP","Close WebView → back to native mini apps list","c");
+// Number steps sequentially across all phases (messages + numbered notes)
+{ let k = 0; PHASES.forEach(p => p.items.forEach(it => { if (it.type === "msg" || (it.type === "note" && it.n)) it.n = String(++k); })); document.getElementById("stepcount").textContent = k; }
+
+const esc = s => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+function wrap(text, max) {
+  const words = text.split(" "), out = []; let cur = "";
+  for (const w of words) {
+    if (cur && (cur + " " + w).length > max) { out.push(cur); cur = w; }
+    else cur = cur ? cur + " " + w : w;
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+const CW = 6.7;
+
+function render(phase, pi) {
+  const G = 176, M = 10, W = M * 2 + G * LANES.length;
+  const X = i => M + i * G + G / 2;
+  const id = "p" + pi;
+  const active = new Set(phase.lanes.map(k => L[k]));
+  const body = [], frames = [], frameRects = [];
+  let y = 80;
+
+  function badge(cx, cy, n, color, ch) {
+    const w = Math.max(22, n.length * 7.2 + 10);
+    return (ch ? `<rect class="ring" x="${cx - w/2 - 3}" y="${cy - 13}" width="${w + 6}" height="26" rx="13"/>` : "") +
+      `<rect x="${cx - w/2}" y="${cy - 10}" width="${w}" height="20" rx="10" fill="${color}"/>` +
+      `<text class="badgetxt" x="${cx}" y="${cy + 4}" text-anchor="middle">${esc(n)}</text>`;
+  }
+
+  for (const it of phase.items) {
+    if (it.type === "msg") {
+      const fx = X(L[it.f]), tx = X(L[it.t]), dir = tx > fx ? 1 : -1;
+      const span = Math.abs(tx - fx);
+      const avail = Math.max(span - 50, 260);
+      const lines = wrap(it.label, Math.floor(avail / CW));
+      const bw = Math.max(...lines.map(l => l.length)) * CW;
+      let cx = (fx + tx) / 2 + dir * 10;
+      cx = Math.min(Math.max(cx, bw / 2 + 8), W - bw / 2 - 8);
+      const color = `var(--${it.kind})`;
+      lines.forEach((ln, i) => body.push(`<text class="lbl${it.reply ? " reply" : ""}" x="${cx}" y="${y + 13 + i * 16}" text-anchor="middle">${esc(ln)}</text>`));
+      const ay = y + lines.length * 16 + 12;
+      body.push(`<line x1="${fx}" y1="${ay}" x2="${tx - dir * 3}" y2="${ay}" stroke="${color}" stroke-width="2"${it.reply ? ' stroke-dasharray="6 5"' : ""} marker-end="url(#${id}-${it.kind})"/>`);
+      body.push(badge(fx + dir * 24, ay, it.n, color, it.ch));
+      y = ay + 24;
+    } else if (it.type === "note") {
+      const lines = wrap(it.label, 40);
+      const w = Math.min(Math.max(...lines.map(l => l.length)) * 6.5 + 30, 310);
+      const h = lines.length * 15 + 16;
+      const nx = Math.min(Math.max(X(L[it.at]) - w / 2, 8), W - 8 - w);
+      body.push(`<rect class="notebox${it.ch ? " ch" : ""}" x="${nx}" y="${y}" width="${w}" height="${h}" rx="6"/>`);
+      lines.forEach((ln, i) => body.push(`<text class="notetxt" x="${nx + w/2}" y="${y + 19 + i * 15}" text-anchor="middle">${esc(ln)}</text>`));
+      if (it.n) body.push(badge(Math.max(nx, 18), y, it.n, "var(--muted)", it.ch));
+      y += h + 20;
+    } else if (it.type === "frameStart") {
+      const x1 = Math.max(X(L[it.from]) - G * 0.46, 4), x2 = Math.min(X(L[it.to]) + G * 0.46, W - 4);
+      frames.push({ y, x1, x2, tag: it.tag });
+      body.push(`<text class="flbl" x="${x1 + it.tag.length * 7 + 22}" y="${y + 15}">[${esc(it.label)}]</text>`);
+      y += 34;
+    } else if (it.type === "divider") {
+      const f = frames[frames.length - 1];
+      body.push(`<line class="frame" x1="${f.x1}" y1="${y}" x2="${f.x2}" y2="${y}"/>`);
+      body.push(`<text class="flbl" x="${f.x1 + 12}" y="${y + 18}">[${esc(it.label)}]</text>`);
+      y += 32;
+    } else if (it.type === "frameEnd") {
+      const f = frames.pop();
+      y += 2;
+      const tw = f.tag.length * 7 + 14;
+      frameRects.push(`<rect class="frame" x="${f.x1}" y="${f.y}" width="${f.x2 - f.x1}" height="${y - f.y}" rx="6"/>` +
+        `<path class="ftag" d="M${f.x1} ${f.y + 6} a6 6 0 0 1 6 -6 h${tw - 6} v14 l-6 6 h-${tw} z"/>` +
+        `<text class="ftagtxt" x="${f.x1 + 7}" y="${f.y + 14}">${f.tag}</text>`);
+      y += 14;
+    }
+  }
+  const H = y + 10;
+  const heads = LANES.map((l, i) => {
+    const on = active.has(i), x = X(i);
+    return `<g class="${on ? "" : "dim"}"><line class="life${on ? " on" : ""}" x1="${x}" y1="58" x2="${x}" y2="${H - 6}"/>` +
+      `<rect class="hbox" x="${x - G/2 + 10}" y="8" width="${G - 20}" height="50" rx="8"/>` +
+      `<text class="hname" x="${x}" y="29" text-anchor="middle">${l[1]}</text>` +
+      `<text class="hsub" x="${x}" y="46" text-anchor="middle">${l[2]}</text></g>`;
+  }).join("");
+  const markers = ["device","bank","partner"].map(k =>
+    `<marker id="${id}-${k}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--${k})"/></marker>`).join("");
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Phase ${pi + 1}: ${esc(phase.title)}"><defs>${markers}</defs>${heads}${frameRects.join("")}${body.join("")}</svg>`;
+}
+
+const index = document.getElementById("index");
+const host = document.getElementById("phases");
+PHASES.forEach((p, i) => {
+  const nums = p.items.filter(x => x.n).map(x => x.n);
+  const changed = p.items.filter(x => x.ch).length;
+  const chip = p.isNew ? `<span class="chip">New phase</span>` : changed ? `<span class="chip">${changed} updated</span>` : "";
+  index.insertAdjacentHTML("beforeend", `<a href="#phase-${i + 1}" data-phase="${i + 1}"><b>${i + 1}</b><span>${esc(p.title)}</span>${p.isNew ? '<span class="tag">new</span>' : ""}</a>`);
+  host.insertAdjacentHTML("beforeend",
+    `<section class="phase" id="phase-${i + 1}"><div class="phase-head"><span class="phase-num">Phase ${i + 1}</span><h3>${esc(p.title)}</h3>` +
+    `<span class="steps">steps ${nums[0]}–${nums[nums.length - 1]}</span>${chip}` +
+    `<p>${esc(p.blurb)}</p></div><div class="scroller">${render(p, i)}</div></section>`);
+});
+
+// Collapse the legend on narrow screens so the sticky bar stays small
+const narrow = window.matchMedia("(max-width: 1100px)");
+if (narrow.matches) document.getElementById("legendBox").open = false;
+
+// Highlight the phase currently in view
+const links = [...index.querySelectorAll("a")];
+function setActive(n) {
+  links.forEach(a => a.setAttribute("aria-current", a.dataset.phase === String(n) ? "true" : "false"));
+  const a = links[n - 1];
+  if (a && narrow.matches) {
+    const box = index.getBoundingClientRect(), r = a.getBoundingClientRect();
+    if (r.left < box.left || r.right > box.right) index.scrollLeft += r.left - box.left - 24;
+  }
+}
+const sections = [...document.querySelectorAll(".phase")];
+function onScroll() {
+  const offset = narrow.matches ? 170 : 120;
+  let current = 1;
+  for (const s of sections) { if (s.getBoundingClientRect().top - offset <= 0) current = +s.id.split("-")[1]; }
+  setActive(current);
+}
+let ticking = false;
+window.addEventListener("scroll", () => { if (!ticking) { ticking = true; requestAnimationFrame(() => { onScroll(); ticking = false; }); } }, { passive: true });
+window.addEventListener("resize", onScroll);
+onScroll();
+</script>
+
+</body></html>

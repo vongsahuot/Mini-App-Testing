@@ -1,0 +1,59 @@
+.title {
+  font-size: 30px;
+  line-height: 1.15;
+  margin: 0 0 6px;
+  letter-spacing: -0.01em;
+}
+.lead {
+  margin: 0 0 24px;
+  color: var(--muted);
+  max-width: 70ch;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+.tool {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-top: 4px solid;
+  border-radius: 10px;
+  color: var(--fg);
+  text-decoration: none;
+}
+.tool:hover {
+  background: var(--head-bg);
+}
+.tool strong {
+  font-size: 17px;
+}
+.tool span {
+  color: var(--muted);
+  font-size: 14px;
+  flex: 1;
+}
+.tool code {
+  color: var(--muted);
+}
+.steps {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.note {
+  color: var(--muted);
+  font-size: 14px;
+  margin: 12px 0 0;
+}
+@media (max-width: 600px) {
+  .title {
+    font-size: 24px;
+  }
+}
