@@ -16,7 +16,9 @@ public class ErrorHandler {
     @ExceptionHandler(ApiException.class)
     public ResponseEntity<Map<String, Object>> api(ApiException e) {
         log.info("{} {}: {}", e.status, e.code, e.getMessage());
-        return ResponseEntity.status(e.status).body(Json.obj("code", e.code, "message", e.getMessage()));
+        Map<String, Object> body = Json.obj("code", e.code, "message", e.getMessage());
+        body.putAll(e.extra);
+        return ResponseEntity.status(e.status).body(body);
     }
 
     @ExceptionHandler(NoResourceFoundException.class)

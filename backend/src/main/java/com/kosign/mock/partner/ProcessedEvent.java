@@ -11,19 +11,20 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.time.Instant;
 import java.util.List;
 
-/** Webhook events already handled (dedupe by eventId) and received daily statements. */
+/** Payment notifications already handled (dedupe by eventId; the order itself updates once by paymentRef). */
 @Entity
-@Table(name = "webhook_events")
+@Table(name = "notifications")
 public class ProcessedEvent {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) public Long id;
     @Column(unique = true) public String eventId;
-    public String type;
+    public String paymentRef;
+    public String status;
     @Column(length = 4000) public String payload;
     public Instant receivedAt;
 
     public interface Repo extends JpaRepository<ProcessedEvent, Long> {
         boolean existsByEventId(String eventId);
 
-        List<ProcessedEvent> findByTypeOrderByIdDesc(String type);
+        List<ProcessedEvent> findAllByOrderByIdDesc();
     }
 }

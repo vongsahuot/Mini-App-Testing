@@ -7,15 +7,22 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.time.Instant;
 
-/** Scopes a customer has allowed for one mini app (the consent sheet is shown only the first time). */
+/** The consentVersion a customer accepted for one Mini App, with the profile snapshot that may be shared. */
 @Entity
 @Table(name = "consents")
 public class Consent {
     @Id public String id; // customerId:appId
     public String customerId;
     public String appId;
-    public String scopes; // comma separated
-    public Instant grantedAt;
+    public String version;
+    public String scopes;
+    public String name;
+    public String phone;
+    public Instant acceptedAt;
+
+    public static String id(String customerId, String appId) {
+        return customerId + ":" + appId;
+    }
 
     public interface Repo extends JpaRepository<Consent, String> {}
 }

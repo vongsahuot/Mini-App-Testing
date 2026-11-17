@@ -1,0 +1,3465 @@
+{
+ "lanes": {
+  "U": "User",
+  "APP": "MB App",
+  "PC": "Partner Client Side",
+  "PS": "Partner Server Side",
+  "PG": "Public Gateway",
+  "MAS": "Mini App Service",
+  "MBE": "Mobile Backend",
+  "SS": "Storage Service",
+  "MIO": "MinIO",
+  "LG": "Local Gateway",
+  "KF": "Kafka",
+  "CB": "Core Banking",
+  "SDK": "Partner SDK",
+  "PA": "Partner App"
+ },
+ "types": [
+  {
+   "id": "webview",
+   "name": "Link WebView"
+  },
+  {
+   "id": "api",
+   "name": "API linkage"
+  },
+  {
+   "id": "sdk",
+   "name": "SDK embedding"
+  },
+  {
+   "id": "a2a",
+   "name": "App-to-App"
+  }
+ ],
+ "phases": {
+  "list": {
+   "sec": 1,
+   "title": "List Mini Apps",
+   "steps": [
+    {
+     "n": "1",
+     "label": "Open Mini App feature",
+     "from": "U",
+     "to": "APP",
+     "reply": false,
+     "actor": "APP"
+    },
+    {
+     "n": "2",
+     "label": "List Mini App API",
+     "from": "APP",
+     "to": "PG",
+     "reply": false,
+     "actor": "PG"
+    },
+    {
+     "n": "3",
+     "label": "Forward API",
+     "from": "PG",
+     "to": "MBE",
+     "reply": false,
+     "actor": "MBE"
+    },
+    {
+     "n": "4",
+     "label": "Request Mini App list",
+     "from": "MBE",
+     "to": "MAS",
+     "reply": false,
+     "actor": "MAS"
+    },
+    {
+     "n": "5",
+     "label": "Query enabled Mini Apps: eligibility rules + min MB App version",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "6",
+     "label": "Mini App list",
+     "from": "MAS",
+     "to": "MBE",
+     "reply": true,
+     "actor": "MBE"
+    },
+    {
+     "n": "7",
+     "label": "Mini App list",
+     "from": "MBE",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "8",
+     "label": "Mini App list + ETag (or 304 Not Modified)",
+     "from": "PG",
+     "to": "APP",
+     "reply": true,
+     "actor": "APP"
+    },
+    {
+     "n": "9",
+     "label": "Display Mini App list",
+     "from": "APP",
+     "to": "U",
+     "reply": true,
+     "actor": "U"
+    }
+   ]
+  },
+  "detail": {
+   "sec": 2,
+   "title": "Load Mini App detail",
+   "steps": [
+    {
+     "n": "1",
+     "label": "Tap Mini App",
+     "from": "U",
+     "to": "APP",
+     "reply": false,
+     "actor": "APP"
+    },
+    {
+     "n": "2",
+     "label": "Get Mini App Detail (appId)",
+     "from": "APP",
+     "to": "PG",
+     "reply": false,
+     "actor": "PG"
+    },
+    {
+     "n": "3",
+     "label": "Forward API",
+     "from": "PG",
+     "to": "MBE",
+     "reply": false,
+     "actor": "MBE"
+    },
+    {
+     "n": "4",
+     "label": "Request Mini App detail",
+     "from": "MBE",
+     "to": "MAS",
+     "reply": false,
+     "actor": "MAS"
+    },
+    {
+     "n": "5",
+     "label": "Load app, consent status (accepted version vs current), exchange info",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "5a",
+     "label": "Retry partner registration now (same as steps 15–19, incl. failure branch)",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "6",
+     "label": "Detail",
+     "from": "MAS",
+     "to": "MBE",
+     "reply": true,
+     "actor": "MBE"
+    },
+    {
+     "n": "7",
+     "label": "Detail",
+     "from": "MBE",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "8",
+     "label": "Type, entryUrl, allowedOrigins, consent status",
+     "from": "PG",
+     "to": "APP",
+     "reply": true,
+     "actor": "APP"
+    }
+   ]
+  },
+  "consent": {
+   "sec": 2,
+   "title": "Consent & user registration",
+   "steps": [
+    {
+     "n": "9",
+     "label": "Show consent screen",
+     "from": "APP",
+     "to": "U",
+     "reply": false,
+     "actor": "U"
+    },
+    {
+     "n": "10",
+     "label": "Accept consent (decline → close)",
+     "from": "U",
+     "to": "APP",
+     "reply": false,
+     "actor": "APP"
+    },
+    {
+     "n": "11",
+     "label": "Accept Consent API (appId, consentVersion)",
+     "from": "APP",
+     "to": "PG",
+     "reply": false,
+     "actor": "PG"
+    },
+    {
+     "n": "12",
+     "label": "Forward API",
+     "from": "PG",
+     "to": "MBE",
+     "reply": false,
+     "actor": "MBE"
+    },
+    {
+     "n": "13",
+     "label": "Request save consent",
+     "from": "MBE",
+     "to": "MAS",
+     "reply": false,
+     "actor": "MAS"
+    },
+    {
+     "n": "14",
+     "label": "Check consentVersion is current; save consent; check registration config",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "15",
+     "label": "Register User API (consented info, signed, timeout ~5 s)",
+     "from": "MAS",
+     "to": "PG",
+     "reply": false,
+     "actor": "PG"
+    },
+    {
+     "n": "16",
+     "label": "Forward to registered registerUserUrl (egress allowlist, mTLS)",
+     "from": "PG",
+     "to": "PS",
+     "reply": false,
+     "actor": "PS"
+    },
+    {
+     "n": "17",
+     "label": "partnerUserId",
+     "from": "PS",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "18",
+     "label": "User exchange info",
+     "from": "PG",
+     "to": "MAS",
+     "reply": true,
+     "actor": "MAS"
+    },
+    {
+     "n": "19",
+     "label": "Save exchange info (userId, appId, partnerUserId)",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "19a",
+     "label": "Save no exchange info; consent stays saved; return REGISTRATION_FAILED",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "19b",
+     "label": "Error (REGISTRATION_FAILED)",
+     "from": "MAS",
+     "to": "MBE",
+     "reply": true,
+     "actor": "MBE"
+    },
+    {
+     "n": "19c",
+     "label": "Error",
+     "from": "MBE",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "19d",
+     "label": "Error",
+     "from": "PG",
+     "to": "APP",
+     "reply": true,
+     "actor": "APP"
+    },
+    {
+     "n": "19e",
+     "label": "Show “Can't open right now, try again”; stop here",
+     "actor": "APP",
+     "note": true
+    },
+    {
+     "n": "20",
+     "label": "Consent saved; registration done (if required)",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "21",
+     "label": "OK (consent ACCEPTED)",
+     "from": "MAS",
+     "to": "MBE",
+     "reply": true,
+     "actor": "MBE"
+    },
+    {
+     "n": "22",
+     "label": "OK (consent ACCEPTED)",
+     "from": "MBE",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "23",
+     "label": "OK (consent ACCEPTED)",
+     "from": "PG",
+     "to": "APP",
+     "reply": true,
+     "actor": "APP"
+    }
+   ]
+  },
+  "open_site": {
+   "sec": 2,
+   "title": "Open partner site & login()",
+   "steps": [
+    {
+     "n": "24",
+     "label": "Open WebView: per-customer data store; bridges (login, openPayment, close) only for allowedOrigins, main frame",
+     "actor": "APP",
+     "note": true
+    },
+    {
+     "n": "25",
+     "label": "Load entryUrl (HTTPS, no code in URL)",
+     "from": "APP",
+     "to": "PC",
+     "reply": false,
+     "actor": "PC"
+    },
+    {
+     "n": "25a",
+     "label": "Native error screen + Retry",
+     "actor": "APP",
+     "note": true
+    },
+    {
+     "n": "26",
+     "label": "JS bridge: login()",
+     "from": "PC",
+     "to": "APP",
+     "reply": false,
+     "actor": "APP"
+    },
+    {
+     "n": "27",
+     "label": "Check caller: allowedOrigin + main frame",
+     "actor": "APP",
+     "note": true
+    },
+    {
+     "n": "28",
+     "label": "Get Auth Code API (appId)",
+     "from": "APP",
+     "to": "PG",
+     "reply": false,
+     "actor": "PG"
+    },
+    {
+     "n": "29",
+     "label": "Forward API",
+     "from": "PG",
+     "to": "MBE",
+     "reply": false,
+     "actor": "MBE"
+    },
+    {
+     "n": "30",
+     "label": "Request auth code",
+     "from": "MBE",
+     "to": "MAS",
+     "reply": false,
+     "actor": "MAS"
+    },
+    {
+     "n": "31",
+     "label": "Consent current + registered? Create authCode (1 use, 60 s, customer + appId)",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "32",
+     "label": "authCode",
+     "from": "MAS",
+     "to": "MBE",
+     "reply": true,
+     "actor": "MBE"
+    },
+    {
+     "n": "33",
+     "label": "authCode",
+     "from": "MBE",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "34",
+     "label": "authCode",
+     "from": "PG",
+     "to": "APP",
+     "reply": true,
+     "actor": "APP"
+    },
+    {
+     "n": "35",
+     "label": "Resolve login() with authCode",
+     "from": "APP",
+     "to": "PC",
+     "reply": true,
+     "actor": "PC"
+    },
+    {
+     "n": "36",
+     "label": "Send authCode",
+     "from": "PC",
+     "to": "PS",
+     "reply": false,
+     "actor": "PS"
+    },
+    {
+     "n": "37",
+     "label": "Exchange Auth Code API (mTLS, signed)",
+     "from": "PS",
+     "to": "PG",
+     "reply": false,
+     "actor": "PG"
+    },
+    {
+     "n": "37a",
+     "label": "Partner gateway (inbound): IP allowlist + mTLS for this clientId, rate limit → Mini App Service",
+     "actor": "PG",
+     "note": true
+    },
+    {
+     "n": "38",
+     "label": "Forward API",
+     "from": "PG",
+     "to": "MAS",
+     "reply": false,
+     "actor": "MAS"
+    },
+    {
+     "n": "39",
+     "label": "Check code: unused, unexpired, same appId as caller → mark used",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "40",
+     "label": "partnerUserId + consented user info",
+     "from": "MAS",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "41",
+     "label": "partnerUserId + user info",
+     "from": "PG",
+     "to": "PS",
+     "reply": true,
+     "actor": "PS"
+    },
+    {
+     "n": "42",
+     "label": "Find partner user; create session",
+     "actor": "PS",
+     "note": true
+    },
+    {
+     "n": "43",
+     "label": "Partner session (HttpOnly cookie)",
+     "from": "PS",
+     "to": "PC",
+     "reply": true,
+     "actor": "PC"
+    },
+    {
+     "n": "44",
+     "label": "Show signed-in Mini App",
+     "from": "PC",
+     "to": "U",
+     "reply": true,
+     "actor": "U"
+    },
+    {
+     "n": "39a",
+     "label": "400 invalid_grant",
+     "from": "MAS",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "39b",
+     "label": "Error",
+     "from": "PG",
+     "to": "PS",
+     "reply": true,
+     "actor": "PS"
+    },
+    {
+     "n": "39c",
+     "label": "Error",
+     "from": "PS",
+     "to": "PC",
+     "reply": true,
+     "actor": "PC"
+    },
+    {
+     "n": "39d",
+     "label": "Call login() again (new code)",
+     "actor": "PC",
+     "note": true
+    }
+   ]
+  },
+  "create_order": {
+   "sec": 3,
+   "title": "Create order + checksum",
+   "steps": [
+    {
+     "n": "1",
+     "label": "Complete transaction",
+     "from": "U",
+     "to": "PC",
+     "reply": false,
+     "actor": "PC"
+    },
+    {
+     "n": "2",
+     "label": "Create order (items, partner session)",
+     "from": "PC",
+     "to": "PS",
+     "reply": false,
+     "actor": "PS"
+    },
+    {
+     "n": "3",
+     "label": "Set price; create order (orderId, amount, currency, expiry); HMAC over canonical string",
+     "actor": "PS",
+     "note": true
+    },
+    {
+     "n": "4",
+     "label": "Order info + checksum",
+     "from": "PS",
+     "to": "PC",
+     "reply": true,
+     "actor": "PC"
+    }
+   ]
+  },
+  "verify": {
+   "sec": 3,
+   "title": "Verify transaction",
+   "steps": [
+    {
+     "n": "5",
+     "label": "JS Bridge openPayment(order, checksum)",
+     "from": "PC",
+     "to": "APP",
+     "reply": false,
+     "actor": "APP"
+    },
+    {
+     "n": "5a",
+     "label": "Check caller: allowedOrigin + main frame; one sheet at a time; take appId from the open Mini App",
+     "actor": "APP",
+     "note": true
+    },
+    {
+     "n": "6",
+     "label": "Verify Transaction API (appId from MB App, order, checksum)",
+     "from": "APP",
+     "to": "PG",
+     "reply": false,
+     "actor": "PG"
+    },
+    {
+     "n": "7",
+     "label": "Forward API (app gateway: session token, rate limit)",
+     "from": "PG",
+     "to": "MBE",
+     "reply": false,
+     "actor": "MBE"
+    },
+    {
+     "n": "8",
+     "label": "Verify transaction",
+     "from": "MBE",
+     "to": "MAS",
+     "reply": false,
+     "actor": "MAS"
+    },
+    {
+     "n": "9",
+     "label": "order.appId == appId; HMAC with that partner's key; amount / currency / partnerUserId / expiry; same PENDING order → same paymentRef",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "10",
+     "label": "Save txn PENDING (bound to customer + appId, expiry = min(order, TTL))",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "11",
+     "label": "Payment info (paymentRef, merchant from registry, amount, currency)",
+     "from": "MAS",
+     "to": "MBE",
+     "reply": true,
+     "actor": "MBE"
+    },
+    {
+     "n": "12",
+     "label": "Payment info",
+     "from": "MBE",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "13",
+     "label": "Payment info",
+     "from": "PG",
+     "to": "APP",
+     "reply": true,
+     "actor": "APP"
+    },
+    {
+     "n": "55",
+     "label": "Error (errorCode)",
+     "from": "MAS",
+     "to": "MBE",
+     "reply": true,
+     "actor": "MBE"
+    },
+    {
+     "n": "56",
+     "label": "Error",
+     "from": "MBE",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "57",
+     "label": "Error",
+     "from": "PG",
+     "to": "APP",
+     "reply": true,
+     "actor": "APP"
+    },
+    {
+     "n": "58",
+     "label": "JS Bridge callback (FAILED, errorCode)",
+     "from": "APP",
+     "to": "PC",
+     "reply": true,
+     "actor": "PC"
+    },
+    {
+     "n": "59",
+     "label": "Display transaction result",
+     "from": "PC",
+     "to": "U",
+     "reply": true,
+     "actor": "U"
+    }
+   ]
+  },
+  "init": {
+   "sec": 3,
+   "title": "Init payment & authenticate",
+   "steps": [
+    {
+     "n": "14",
+     "label": "Open payment bottom sheet",
+     "from": "APP",
+     "to": "U",
+     "reply": false,
+     "actor": "U"
+    },
+    {
+     "n": "15",
+     "label": "Select account & Pay",
+     "from": "U",
+     "to": "APP",
+     "reply": false,
+     "actor": "APP"
+    },
+    {
+     "n": "16",
+     "label": "Init Payment API (paymentRef, account)",
+     "from": "APP",
+     "to": "PG",
+     "reply": false,
+     "actor": "PG"
+    },
+    {
+     "n": "17",
+     "label": "Forward API",
+     "from": "PG",
+     "to": "MBE",
+     "reply": false,
+     "actor": "MBE"
+    },
+    {
+     "n": "17a",
+     "label": "Get txn (paymentRef, customer)",
+     "from": "MBE",
+     "to": "MAS",
+     "reply": false,
+     "actor": "MAS"
+    },
+    {
+     "n": "17b",
+     "label": "Amount, currency, status",
+     "from": "MAS",
+     "to": "MBE",
+     "reply": true,
+     "actor": "MBE"
+    },
+    {
+     "n": "18",
+     "label": "Validate account ownership, currency, balance, limit (server amount)",
+     "actor": "MBE",
+     "note": true
+    },
+    {
+     "n": "19",
+     "label": "Request payment",
+     "from": "MBE",
+     "to": "MAS",
+     "reply": false,
+     "actor": "MAS"
+    },
+    {
+     "n": "20",
+     "label": "Validate paymentRef, PENDING, amount, expiry",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "21",
+     "label": "Init payment (hold funds)",
+     "from": "MAS",
+     "to": "LG",
+     "reply": false,
+     "actor": "LG"
+    },
+    {
+     "n": "22",
+     "label": "Init response",
+     "from": "LG",
+     "to": "MAS",
+     "reply": true,
+     "actor": "MAS"
+    },
+    {
+     "n": "23",
+     "label": "Update txn INITIATED",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "24",
+     "label": "Init success",
+     "from": "MAS",
+     "to": "MBE",
+     "reply": true,
+     "actor": "MBE"
+    },
+    {
+     "n": "25",
+     "label": "Get auth method; if OTP, send OTP bound to paymentRef + amount",
+     "actor": "MBE",
+     "note": true
+    },
+    {
+     "n": "26",
+     "label": "Txn info, auth method (PIN/OTP)",
+     "from": "MBE",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "27",
+     "label": "Txn info, auth method",
+     "from": "PG",
+     "to": "APP",
+     "reply": true,
+     "actor": "APP"
+    },
+    {
+     "n": "28",
+     "label": "PIN / OTP screen",
+     "from": "APP",
+     "to": "U",
+     "reply": false,
+     "actor": "U"
+    },
+    {
+     "n": "29",
+     "label": "Complete authentication",
+     "from": "U",
+     "to": "APP",
+     "reply": false,
+     "actor": "APP"
+    },
+    {
+     "n": "22a",
+     "label": "Failed → keep PENDING. Timeout → set INITIATED (R8 cancels hold at expiry)",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "22b",
+     "label": "Init failed (errorCode)",
+     "from": "MAS",
+     "to": "MBE",
+     "reply": true,
+     "actor": "MBE"
+    },
+    {
+     "n": "22c",
+     "label": "Failed",
+     "from": "MBE",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "22d",
+     "label": "Failed",
+     "from": "PG",
+     "to": "APP",
+     "reply": true,
+     "actor": "APP"
+    },
+    {
+     "n": "22e",
+     "label": "Show error in bottom sheet; customer may retry",
+     "actor": "APP",
+     "note": true
+    }
+   ]
+  },
+  "confirm": {
+   "sec": 3,
+   "title": "Confirm & debit",
+   "steps": [
+    {
+     "n": "30",
+     "label": "Confirm Payment API (paymentRef, PIN/OTP)",
+     "from": "APP",
+     "to": "PG",
+     "reply": false,
+     "actor": "PG"
+    },
+    {
+     "n": "31",
+     "label": "Forward API",
+     "from": "PG",
+     "to": "MBE",
+     "reply": false,
+     "actor": "MBE"
+    },
+    {
+     "n": "32",
+     "label": "Validate request & authentication",
+     "actor": "MBE",
+     "note": true
+    },
+    {
+     "n": "32a",
+     "label": "Auth failed (attempts left / locked)",
+     "from": "MBE",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "32b",
+     "label": "Auth failed",
+     "from": "PG",
+     "to": "APP",
+     "reply": true,
+     "actor": "APP"
+    },
+    {
+     "n": "32c",
+     "label": "Let customer retry; txn stays INITIATED; lock after N tries",
+     "actor": "APP",
+     "note": true
+    },
+    {
+     "n": "33",
+     "label": "Confirm payment",
+     "from": "MBE",
+     "to": "MAS",
+     "reply": false,
+     "actor": "MAS"
+    },
+    {
+     "n": "34",
+     "label": "Set PROCESSING only if INITIATED and not expired (1 row updated)",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "35",
+     "label": "Complete payment (idempotent by paymentRef)",
+     "from": "MAS",
+     "to": "LG",
+     "reply": false,
+     "actor": "LG"
+    },
+    {
+     "n": "36",
+     "label": "Debit / credit balance",
+     "from": "LG",
+     "to": "CB",
+     "reply": false,
+     "actor": "CB"
+    },
+    {
+     "n": "37",
+     "label": "Debit / credit result",
+     "from": "CB",
+     "to": "LG",
+     "reply": true,
+     "actor": "LG"
+    },
+    {
+     "n": "38",
+     "label": "Complete response",
+     "from": "LG",
+     "to": "MAS",
+     "reply": true,
+     "actor": "MAS"
+    },
+    {
+     "n": "39",
+     "label": "Update txn SUCCESS + outbox row (one DB transaction)",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "40",
+     "label": "Outbox relay publishes payment notification (SUCCESS)",
+     "from": "MAS",
+     "to": "KF",
+     "reply": false,
+     "actor": "KF"
+    },
+    {
+     "n": "41",
+     "label": "Payment result",
+     "from": "MAS",
+     "to": "MBE",
+     "reply": true,
+     "actor": "MBE"
+    },
+    {
+     "n": "42",
+     "label": "Push notification",
+     "from": "MBE",
+     "to": "U",
+     "reply": false,
+     "actor": "U"
+    },
+    {
+     "n": "43",
+     "label": "Success",
+     "from": "MBE",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "44",
+     "label": "Success",
+     "from": "PG",
+     "to": "APP",
+     "reply": true,
+     "actor": "APP"
+    },
+    {
+     "n": "45",
+     "label": "Show success, close bottom sheet",
+     "actor": "APP",
+     "note": true
+    },
+    {
+     "n": "38a",
+     "label": "Update txn FAILED (failReason) + outbox row (one DB transaction)",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "38b",
+     "label": "Outbox relay publishes payment notification (FAILED)",
+     "from": "MAS",
+     "to": "KF",
+     "reply": false,
+     "actor": "KF"
+    },
+    {
+     "n": "38c",
+     "label": "Payment result (FAILED, errorCode)",
+     "from": "MAS",
+     "to": "MBE",
+     "reply": true,
+     "actor": "MBE"
+    },
+    {
+     "n": "38d",
+     "label": "Failed",
+     "from": "MBE",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "38e",
+     "label": "Failed",
+     "from": "PG",
+     "to": "APP",
+     "reply": true,
+     "actor": "APP"
+    },
+    {
+     "n": "38f",
+     "label": "Show failure, close bottom sheet",
+     "actor": "APP",
+     "note": true
+    },
+    {
+     "n": "38g",
+     "label": "Keep txn PROCESSING; recovery job resolves it (R1–R6c)",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "38h",
+     "label": "Payment result (PROCESSING)",
+     "from": "MAS",
+     "to": "MBE",
+     "reply": true,
+     "actor": "MBE"
+    },
+    {
+     "n": "38i",
+     "label": "Processing",
+     "from": "MBE",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "38j",
+     "label": "Processing",
+     "from": "PG",
+     "to": "APP",
+     "reply": true,
+     "actor": "APP"
+    },
+    {
+     "n": "38k",
+     "label": "Show \"Payment is being processed\", close bottom sheet",
+     "actor": "APP",
+     "note": true
+    },
+    {
+     "n": "45a",
+     "label": "Get Payment Status API (paymentRef)",
+     "from": "APP",
+     "to": "PG",
+     "reply": false,
+     "actor": "PG"
+    },
+    {
+     "n": "45b",
+     "label": "Forward API",
+     "from": "PG",
+     "to": "MBE",
+     "reply": false,
+     "actor": "MBE"
+    },
+    {
+     "n": "45c",
+     "label": "Get payment status",
+     "from": "MBE",
+     "to": "MAS",
+     "reply": false,
+     "actor": "MAS"
+    },
+    {
+     "n": "45d",
+     "label": "Status",
+     "from": "MAS",
+     "to": "MBE",
+     "reply": true,
+     "actor": "MBE"
+    },
+    {
+     "n": "45e",
+     "label": "Status",
+     "from": "MBE",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "45f",
+     "label": "Status",
+     "from": "PG",
+     "to": "APP",
+     "reply": true,
+     "actor": "APP"
+    },
+    {
+     "n": "45g",
+     "label": "Show result for that status; PROCESSING → \"being processed\"",
+     "actor": "APP",
+     "note": true
+    }
+   ]
+  },
+  "return_page": {
+   "sec": 3,
+   "title": "Return to partner page",
+   "steps": [
+    {
+     "n": "46",
+     "label": "JS Bridge callback (status, paymentRef)",
+     "from": "APP",
+     "to": "PC",
+     "reply": true,
+     "actor": "PC"
+    },
+    {
+     "n": "47",
+     "label": "Inquiry order status",
+     "from": "PC",
+     "to": "PS",
+     "reply": false,
+     "actor": "PS"
+    },
+    {
+     "n": "47a",
+     "label": "Inquiry Payment Status API (paymentRef or orderId, signed)",
+     "from": "PS",
+     "to": "PG",
+     "reply": false,
+     "actor": "PG"
+    },
+    {
+     "n": "47b",
+     "label": "Forward API (partner gateway: IP allowlist + mTLS, rate limit)",
+     "from": "PG",
+     "to": "MAS",
+     "reply": false,
+     "actor": "MAS"
+    },
+    {
+     "n": "47ba",
+     "label": "Check paymentRef / orderId belongs to the caller's appId",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "47c",
+     "label": "Status: PENDING / INITIATED / PROCESSING / SUCCESS / FAILED / EXPIRED",
+     "from": "MAS",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "47d",
+     "label": "Payment status",
+     "from": "PG",
+     "to": "PS",
+     "reply": true,
+     "actor": "PS"
+    },
+    {
+     "n": "47e",
+     "label": "Update order status if final",
+     "actor": "PS",
+     "note": true
+    },
+    {
+     "n": "48",
+     "label": "Order status",
+     "from": "PS",
+     "to": "PC",
+     "reply": true,
+     "actor": "PC"
+    }
+   ]
+  },
+  "notify": {
+   "sec": 3,
+   "title": "Payment notification (async)",
+   "steps": [
+    {
+     "n": "49",
+     "label": "Consume payment notification (main topic)",
+     "from": "KF",
+     "to": "MAS",
+     "reply": false,
+     "actor": "MAS"
+    },
+    {
+     "n": "49a",
+     "label": "Load partner's registered notifyUrl + bank signing key; sign body (timestamp + nonce)",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "50",
+     "label": "Payment notification (signed) → registered notifyUrl",
+     "from": "MAS",
+     "to": "PG",
+     "reply": false,
+     "actor": "PG"
+    },
+    {
+     "n": "50a",
+     "label": "Partner gateway (outbound): egress allowlist, mTLS client cert, timeout 10 s",
+     "actor": "PG",
+     "note": true
+    },
+    {
+     "n": "51",
+     "label": "POST notifyUrl (orderId, paymentRef, amount, currency, status)",
+     "from": "PG",
+     "to": "PS",
+     "reply": false,
+     "actor": "PS"
+    },
+    {
+     "n": "52",
+     "label": "Verify signature; update order once by paymentRef",
+     "actor": "PS",
+     "note": true
+    },
+    {
+     "n": "53",
+     "label": "ACK (HTTP 200 + {\"ack\":true})",
+     "from": "PS",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "54",
+     "label": "ACK",
+     "from": "PG",
+     "to": "MAS",
+     "reply": true,
+     "actor": "MAS"
+    },
+    {
+     "n": "54a",
+     "label": "Publish to next retry topic (10 s → 1 min → 10 min)",
+     "from": "MAS",
+     "to": "KF",
+     "reply": false,
+     "actor": "KF"
+    },
+    {
+     "n": "54b",
+     "label": "Commit offset; main consumer keeps going",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "54c",
+     "label": "After last retry → dead-letter topic + alert ops",
+     "actor": "MAS",
+     "note": true
+    }
+   ]
+  },
+  "recovery": {
+   "sec": 3,
+   "title": "Recovery & expiry (scheduled)",
+   "steps": [
+    {
+     "n": "R1",
+     "label": "Inquiry payment status (paymentRef)",
+     "from": "MAS",
+     "to": "LG",
+     "reply": false,
+     "actor": "LG"
+    },
+    {
+     "n": "R2",
+     "label": "Check transaction",
+     "from": "LG",
+     "to": "CB",
+     "reply": false,
+     "actor": "CB"
+    },
+    {
+     "n": "R3",
+     "label": "SUCCESS / FAILED / NOT_FOUND",
+     "from": "CB",
+     "to": "LG",
+     "reply": true,
+     "actor": "LG"
+    },
+    {
+     "n": "R4",
+     "label": "Payment status",
+     "from": "LG",
+     "to": "MAS",
+     "reply": true,
+     "actor": "MAS"
+    },
+    {
+     "n": "R5",
+     "label": "SUCCESS → SUCCESS. FAILED → FAILED. No answer → retry; alert ops at 15 min",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "R5a",
+     "label": "Void complete (paymentRef)",
+     "from": "MAS",
+     "to": "LG",
+     "reply": false,
+     "actor": "LG"
+    },
+    {
+     "n": "R5b",
+     "label": "Void confirmed → FAILED",
+     "from": "LG",
+     "to": "MAS",
+     "reply": true,
+     "actor": "MAS"
+    },
+    {
+     "n": "R5c",
+     "label": "Save final status + outbox row (one DB transaction)",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "R6",
+     "label": "Outbox relay publishes payment notification (final status)",
+     "from": "MAS",
+     "to": "KF",
+     "reply": false,
+     "actor": "KF"
+    },
+    {
+     "n": "R6b",
+     "label": "Notify customer (paymentRef, final status)",
+     "from": "MAS",
+     "to": "MBE",
+     "reply": false,
+     "actor": "MBE"
+    },
+    {
+     "n": "R6c",
+     "label": "Push notification",
+     "from": "MBE",
+     "to": "U",
+     "reply": false,
+     "actor": "U"
+    },
+    {
+     "n": "R7",
+     "label": "Set EXPIRED only if still PENDING / INITIATED (conditional) + outbox row",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "R8",
+     "label": "Cancel init (release hold), if INITIATED",
+     "from": "MAS",
+     "to": "LG",
+     "reply": false,
+     "actor": "LG"
+    },
+    {
+     "n": "R9",
+     "label": "Cancel response",
+     "from": "LG",
+     "to": "MAS",
+     "reply": true,
+     "actor": "MAS"
+    },
+    {
+     "n": "R9a",
+     "label": "Cancel failed → cancelStatus PENDING, retry next run; alert if stuck",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "R9b",
+     "label": "Outbox relay publishes EXPIRED notification",
+     "from": "MAS",
+     "to": "KF",
+     "reply": false,
+     "actor": "KF"
+    }
+   ]
+  },
+  "refund": {
+   "sec": 4,
+   "title": "Refund (partner-initiated)",
+   "steps": [
+    {
+     "n": "1",
+     "label": "Refund API (paymentRef, refundId, amount, reason; signed)",
+     "from": "PS",
+     "to": "PG",
+     "reply": false,
+     "actor": "PG"
+    },
+    {
+     "n": "2",
+     "label": "Forward API (partner gateway: IP allowlist + mTLS, rate limit)",
+     "from": "PG",
+     "to": "MAS",
+     "reply": false,
+     "actor": "MAS"
+    },
+    {
+     "n": "3",
+     "label": "Same refundId → return its result. Payment SUCCESS? amount ≤ remaining? → save REFUND_PENDING",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "4",
+     "label": "Refund (refundId, bankTxnId, amount)",
+     "from": "MAS",
+     "to": "LG",
+     "reply": false,
+     "actor": "LG"
+    },
+    {
+     "n": "5",
+     "label": "Debit merchant / credit customer (1 txn)",
+     "from": "LG",
+     "to": "CB",
+     "reply": false,
+     "actor": "CB"
+    },
+    {
+     "n": "6",
+     "label": "Result",
+     "from": "CB",
+     "to": "LG",
+     "reply": true,
+     "actor": "LG"
+    },
+    {
+     "n": "7",
+     "label": "REFUNDED + refundTxnId / FAILED",
+     "from": "LG",
+     "to": "MAS",
+     "reply": true,
+     "actor": "MAS"
+    },
+    {
+     "n": "8",
+     "label": "Save refund status (REFUNDED / FAILED) + audit log",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "9",
+     "label": "Notify customer (refund)",
+     "from": "MAS",
+     "to": "MBE",
+     "reply": false,
+     "actor": "MBE"
+    },
+    {
+     "n": "10",
+     "label": "Push notification",
+     "from": "MBE",
+     "to": "U",
+     "reply": false,
+     "actor": "U"
+    },
+    {
+     "n": "11",
+     "label": "REFUNDED / FAILED / REFUND_PENDING",
+     "from": "MAS",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "12",
+     "label": "Refund result",
+     "from": "PG",
+     "to": "PS",
+     "reply": true,
+     "actor": "PS"
+    },
+    {
+     "n": "13",
+     "label": "Get Refund Status (paymentRef, refundId; signed)",
+     "from": "PS",
+     "to": "PG",
+     "reply": false,
+     "actor": "PG"
+    },
+    {
+     "n": "14",
+     "label": "Forward API (partner gateway: IP allowlist + mTLS, rate limit)",
+     "from": "PG",
+     "to": "MAS",
+     "reply": false,
+     "actor": "MAS"
+    },
+    {
+     "n": "15",
+     "label": "Refund status",
+     "from": "MAS",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "16",
+     "label": "Refund status",
+     "from": "PG",
+     "to": "PS",
+     "reply": true,
+     "actor": "PS"
+    }
+   ]
+  },
+  "recon": {
+   "sec": 4,
+   "title": "Reconciliation (daily)",
+   "steps": [
+    {
+     "n": "17",
+     "label": "Settlement file: bankTxnId, paymentRef / refundId, amount, status",
+     "from": "CB",
+     "to": "MAS",
+     "reply": false,
+     "actor": "MAS"
+    },
+    {
+     "n": "18",
+     "label": "Match payments + refunds. PROCESSING and in file → SUCCESS (+ outbox, push). Not in file → flag ops (never auto-fail). Alert on mismatch",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "19",
+     "label": "Write reconciliation report; open items to ops view (audited)",
+     "actor": "MAS",
+     "note": true
+    }
+   ]
+  },
+  "close": {
+   "sec": 4,
+   "title": "Close",
+   "steps": [
+    {
+     "n": "20",
+     "label": "JS bridge: close() (or user taps native X)",
+     "from": "PC",
+     "to": "APP",
+     "reply": false,
+     "actor": "APP"
+    },
+    {
+     "n": "21",
+     "label": "Close WebView, remove bridges; keep the customer's data store",
+     "actor": "APP",
+     "note": true
+    },
+    {
+     "n": "22",
+     "label": "Back to native Mini App list",
+     "from": "APP",
+     "to": "U",
+     "reply": false,
+     "actor": "U"
+    }
+   ]
+  },
+  "detail_api": {
+   "sec": 2,
+   "title": "Load Mini App detail",
+   "steps": [
+    {
+     "n": "1",
+     "label": "Tap Mini App",
+     "from": "U",
+     "to": "APP",
+     "reply": false,
+     "actor": "APP"
+    },
+    {
+     "n": "2",
+     "label": "Get Mini App Detail (appId)",
+     "from": "APP",
+     "to": "PG",
+     "reply": false,
+     "actor": "PG"
+    },
+    {
+     "n": "3",
+     "label": "Forward API",
+     "from": "PG",
+     "to": "MBE",
+     "reply": false,
+     "actor": "MBE"
+    },
+    {
+     "n": "4",
+     "label": "Request Mini App detail",
+     "from": "MBE",
+     "to": "MAS",
+     "reply": false,
+     "actor": "MAS"
+    },
+    {
+     "n": "5",
+     "label": "Load app, consent status (accepted version vs current), exchange info",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "5a",
+     "label": "Retry partner registration now (same as steps 15–19, incl. failure branch)",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "6",
+     "label": "Detail",
+     "from": "MAS",
+     "to": "MBE",
+     "reply": true,
+     "actor": "MBE"
+    },
+    {
+     "n": "7",
+     "label": "Detail",
+     "from": "MBE",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "8",
+     "label": "Type, native screen config, consent status",
+     "from": "PG",
+     "to": "APP",
+     "reply": true,
+     "actor": "APP"
+    }
+   ]
+  },
+  "detail_sdk": {
+   "sec": 2,
+   "title": "Load Mini App detail",
+   "steps": [
+    {
+     "n": "1",
+     "label": "Tap Mini App",
+     "from": "U",
+     "to": "APP",
+     "reply": false,
+     "actor": "APP"
+    },
+    {
+     "n": "2",
+     "label": "Get Mini App Detail (appId)",
+     "from": "APP",
+     "to": "PG",
+     "reply": false,
+     "actor": "PG"
+    },
+    {
+     "n": "3",
+     "label": "Forward API",
+     "from": "PG",
+     "to": "MBE",
+     "reply": false,
+     "actor": "MBE"
+    },
+    {
+     "n": "4",
+     "label": "Request Mini App detail",
+     "from": "MBE",
+     "to": "MAS",
+     "reply": false,
+     "actor": "MAS"
+    },
+    {
+     "n": "5",
+     "label": "Load app, consent status (accepted version vs current), exchange info",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "5a",
+     "label": "Retry partner registration now (same as steps 15–19, incl. failure branch)",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "6",
+     "label": "Detail",
+     "from": "MAS",
+     "to": "MBE",
+     "reply": true,
+     "actor": "MBE"
+    },
+    {
+     "n": "7",
+     "label": "Detail",
+     "from": "MBE",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "8",
+     "label": "Type, sdkModule, minSdkVersion, consent status",
+     "from": "PG",
+     "to": "APP",
+     "reply": true,
+     "actor": "APP"
+    }
+   ]
+  },
+  "detail_a2a": {
+   "sec": 2,
+   "title": "Load Mini App detail",
+   "steps": [
+    {
+     "n": "1",
+     "label": "Tap Mini App",
+     "from": "U",
+     "to": "APP",
+     "reply": false,
+     "actor": "APP"
+    },
+    {
+     "n": "2",
+     "label": "Get Mini App Detail (appId)",
+     "from": "APP",
+     "to": "PG",
+     "reply": false,
+     "actor": "PG"
+    },
+    {
+     "n": "3",
+     "label": "Forward API",
+     "from": "PG",
+     "to": "MBE",
+     "reply": false,
+     "actor": "MBE"
+    },
+    {
+     "n": "4",
+     "label": "Request Mini App detail",
+     "from": "MBE",
+     "to": "MAS",
+     "reply": false,
+     "actor": "MAS"
+    },
+    {
+     "n": "5",
+     "label": "Load app, consent status (accepted version vs current), exchange info",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "5a",
+     "label": "Retry partner registration now (same as steps 15–19, incl. failure branch)",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "6",
+     "label": "Detail",
+     "from": "MAS",
+     "to": "MBE",
+     "reply": true,
+     "actor": "MBE"
+    },
+    {
+     "n": "7",
+     "label": "Detail",
+     "from": "MBE",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "8",
+     "label": "Type, appLink, storeUrl, consent status",
+     "from": "PG",
+     "to": "APP",
+     "reply": true,
+     "actor": "APP"
+    }
+   ]
+  },
+  "api_content": {
+   "sec": 2,
+   "title": "Load partner content (native screens)",
+   "steps": [
+    {
+     "n": "L1",
+     "label": "Open the bank-built native screens for this Mini App; no WebView, no partner code on the device",
+     "actor": "APP",
+     "note": true
+    },
+    {
+     "n": "L2",
+     "label": "Partner Content API (appId, operation, params)",
+     "from": "APP",
+     "to": "PG",
+     "reply": false,
+     "actor": "PG"
+    },
+    {
+     "n": "L3",
+     "label": "Forward API (app gateway: session token, rate limit)",
+     "from": "PG",
+     "to": "MBE",
+     "reply": false,
+     "actor": "MBE"
+    },
+    {
+     "n": "L4",
+     "label": "Request partner content",
+     "from": "MBE",
+     "to": "MAS",
+     "reply": false,
+     "actor": "MAS"
+    },
+    {
+     "n": "L5",
+     "label": "Consent current + registered? Look up partnerUserId; operation must be on this partner's registered list",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "L6",
+     "label": "Partner API call (partnerUserId, params; signed, timeout ~5 s)",
+     "from": "MAS",
+     "to": "PG",
+     "reply": false,
+     "actor": "PG"
+    },
+    {
+     "n": "L7",
+     "label": "Forward to registered apiBaseUrl (egress allowlist, mTLS)",
+     "from": "PG",
+     "to": "PS",
+     "reply": false,
+     "actor": "PS"
+    },
+    {
+     "n": "L8",
+     "label": "Data (e.g. products, prices, order history)",
+     "from": "PS",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "L9",
+     "label": "Data",
+     "from": "PG",
+     "to": "MAS",
+     "reply": true,
+     "actor": "MAS"
+    },
+    {
+     "n": "L10",
+     "label": "Validate against the agreed schema; drop unknown fields; data only, never HTML or script",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "L11",
+     "label": "Content",
+     "from": "MAS",
+     "to": "MBE",
+     "reply": true,
+     "actor": "MBE"
+    },
+    {
+     "n": "L12",
+     "label": "Content",
+     "from": "MBE",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "L13",
+     "label": "Content",
+     "from": "PG",
+     "to": "APP",
+     "reply": true,
+     "actor": "APP"
+    },
+    {
+     "n": "L14",
+     "label": "Show native screen",
+     "from": "APP",
+     "to": "U",
+     "reply": true,
+     "actor": "U"
+    },
+    {
+     "n": "L8a",
+     "label": "Circuit breaker counts the failure; return PARTNER_UNAVAILABLE (or cached catalog if still fresh)",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "L8b",
+     "label": "Error (PARTNER_UNAVAILABLE)",
+     "from": "MAS",
+     "to": "MBE",
+     "reply": true,
+     "actor": "MBE"
+    },
+    {
+     "n": "L8c",
+     "label": "Error",
+     "from": "MBE",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "L8d",
+     "label": "Error",
+     "from": "PG",
+     "to": "APP",
+     "reply": true,
+     "actor": "APP"
+    },
+    {
+     "n": "L8e",
+     "label": "Show “Service unavailable, try again”; stay in MB App",
+     "actor": "APP",
+     "note": true
+    }
+   ]
+  },
+  "api_order": {
+   "sec": 3,
+   "title": "Create order (bank calls partner)",
+   "steps": [
+    {
+     "n": "L15",
+     "label": "Confirm order on native screen",
+     "from": "U",
+     "to": "APP",
+     "reply": false,
+     "actor": "APP"
+    },
+    {
+     "n": "L16",
+     "label": "Create Order API (appId, items, idempotencyKey)",
+     "from": "APP",
+     "to": "PG",
+     "reply": false,
+     "actor": "PG"
+    },
+    {
+     "n": "L17",
+     "label": "Forward API (app gateway: session token, rate limit)",
+     "from": "PG",
+     "to": "MBE",
+     "reply": false,
+     "actor": "MBE"
+    },
+    {
+     "n": "L18",
+     "label": "Create order",
+     "from": "MBE",
+     "to": "MAS",
+     "reply": false,
+     "actor": "MAS"
+    },
+    {
+     "n": "L19",
+     "label": "Create Order API (partnerUserId, items, idempotencyKey; signed, timeout ~5 s)",
+     "from": "MAS",
+     "to": "PG",
+     "reply": false,
+     "actor": "PG"
+    },
+    {
+     "n": "L20",
+     "label": "Forward to registered createOrderUrl (egress allowlist, mTLS)",
+     "from": "PG",
+     "to": "PS",
+     "reply": false,
+     "actor": "PS"
+    },
+    {
+     "n": "L21",
+     "label": "Set price; create order (orderId, amount, currency, expiry); HMAC over canonical string",
+     "actor": "PS",
+     "note": true
+    },
+    {
+     "n": "L22",
+     "label": "Order info + checksum",
+     "from": "PS",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "L23",
+     "label": "Order info + checksum",
+     "from": "PG",
+     "to": "MAS",
+     "reply": true,
+     "actor": "MAS"
+    },
+    {
+     "n": "L24",
+     "label": "order.appId == appId; HMAC with that partner's key; amount / currency / partnerUserId / expiry; same PENDING order → same paymentRef",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "L25",
+     "label": "Save txn PENDING (bound to customer + appId, expiry = min(order, TTL))",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "L26",
+     "label": "Payment info (paymentRef, merchant from registry, amount, currency)",
+     "from": "MAS",
+     "to": "MBE",
+     "reply": true,
+     "actor": "MBE"
+    },
+    {
+     "n": "L27",
+     "label": "Payment info",
+     "from": "MBE",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "L28",
+     "label": "Payment info",
+     "from": "PG",
+     "to": "APP",
+     "reply": true,
+     "actor": "APP"
+    },
+    {
+     "n": "L24a",
+     "label": "Save no txn; on timeout retry once with the same idempotencyKey, then return error",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "L24b",
+     "label": "Error (errorCode)",
+     "from": "MAS",
+     "to": "MBE",
+     "reply": true,
+     "actor": "MBE"
+    },
+    {
+     "n": "L24c",
+     "label": "Error",
+     "from": "MBE",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "L24d",
+     "label": "Error",
+     "from": "PG",
+     "to": "APP",
+     "reply": true,
+     "actor": "APP"
+    },
+    {
+     "n": "L24e",
+     "label": "Show error on native screen",
+     "from": "APP",
+     "to": "U",
+     "reply": true,
+     "actor": "U"
+    }
+   ]
+  },
+  "api_result": {
+   "sec": 3,
+   "title": "Show result (native)",
+   "steps": [
+    {
+     "n": "L29",
+     "label": "Show native result screen (SUCCESS / FAILED / PROCESSING)",
+     "from": "APP",
+     "to": "U",
+     "reply": true,
+     "actor": "U"
+    },
+    {
+     "n": "L30",
+     "label": "Result comes from the bank's own Confirm / Get Payment Status response; no callback to partner code",
+     "actor": "APP",
+     "note": true
+    },
+    {
+     "n": "L31",
+     "label": "Inquiry Payment Status API (paymentRef or orderId, signed)",
+     "from": "PS",
+     "to": "PG",
+     "reply": false,
+     "actor": "PG"
+    },
+    {
+     "n": "L32",
+     "label": "Forward API (partner gateway: IP allowlist + mTLS, rate limit)",
+     "from": "PG",
+     "to": "MAS",
+     "reply": false,
+     "actor": "MAS"
+    },
+    {
+     "n": "L33",
+     "label": "Check paymentRef / orderId belongs to the caller's appId",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "L34",
+     "label": "Status: PENDING / INITIATED / PROCESSING / SUCCESS / FAILED / EXPIRED",
+     "from": "MAS",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "L35",
+     "label": "Payment status",
+     "from": "PG",
+     "to": "PS",
+     "reply": true,
+     "actor": "PS"
+    },
+    {
+     "n": "L36",
+     "label": "Update order status if final",
+     "actor": "PS",
+     "note": true
+    }
+   ]
+  },
+  "sdk_open": {
+   "sec": 2,
+   "title": "Start partner SDK & login()",
+   "steps": [
+    {
+     "n": "24",
+     "label": "Check kill switch + bundled SDK ≥ minSdkVersion; start SDK with host API only (login, openPayment, close)",
+     "actor": "APP",
+     "note": true
+    },
+    {
+     "n": "25",
+     "label": "Start SDK entry screen (appId, locale; no customer data)",
+     "from": "APP",
+     "to": "SDK",
+     "reply": false,
+     "actor": "SDK"
+    },
+    {
+     "n": "25a",
+     "label": "Native error screen; crash reported; ops can switch the SDK off",
+     "actor": "APP",
+     "note": true
+    },
+    {
+     "n": "26",
+     "label": "Host API: login()",
+     "from": "SDK",
+     "to": "APP",
+     "reply": false,
+     "actor": "APP"
+    },
+    {
+     "n": "27",
+     "label": "Check caller: the SDK instance MB App started for this appId",
+     "actor": "APP",
+     "note": true
+    },
+    {
+     "n": "28",
+     "label": "Get Auth Code API (appId)",
+     "from": "APP",
+     "to": "PG",
+     "reply": false,
+     "actor": "PG"
+    },
+    {
+     "n": "29",
+     "label": "Forward API",
+     "from": "PG",
+     "to": "MBE",
+     "reply": false,
+     "actor": "MBE"
+    },
+    {
+     "n": "30",
+     "label": "Request auth code",
+     "from": "MBE",
+     "to": "MAS",
+     "reply": false,
+     "actor": "MAS"
+    },
+    {
+     "n": "31",
+     "label": "Consent current + registered? Create authCode (1 use, 60 s, customer + appId)",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "32",
+     "label": "authCode",
+     "from": "MAS",
+     "to": "MBE",
+     "reply": true,
+     "actor": "MBE"
+    },
+    {
+     "n": "33",
+     "label": "authCode",
+     "from": "MBE",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "34",
+     "label": "authCode",
+     "from": "PG",
+     "to": "APP",
+     "reply": true,
+     "actor": "APP"
+    },
+    {
+     "n": "35",
+     "label": "Return authCode to login() callback",
+     "from": "APP",
+     "to": "SDK",
+     "reply": true,
+     "actor": "SDK"
+    },
+    {
+     "n": "36",
+     "label": "Send authCode (TLS pinned to registered hosts)",
+     "from": "SDK",
+     "to": "PS",
+     "reply": false,
+     "actor": "PS"
+    },
+    {
+     "n": "37",
+     "label": "Exchange Auth Code API (mTLS, signed)",
+     "from": "PS",
+     "to": "PG",
+     "reply": false,
+     "actor": "PG"
+    },
+    {
+     "n": "37a",
+     "label": "Partner gateway (inbound): IP allowlist + mTLS for this clientId, rate limit → Mini App Service",
+     "actor": "PG",
+     "note": true
+    },
+    {
+     "n": "38",
+     "label": "Forward API",
+     "from": "PG",
+     "to": "MAS",
+     "reply": false,
+     "actor": "MAS"
+    },
+    {
+     "n": "39",
+     "label": "Check code: unused, unexpired, same appId as caller → mark used",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "40",
+     "label": "partnerUserId + consented user info",
+     "from": "MAS",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "41",
+     "label": "partnerUserId + user info",
+     "from": "PG",
+     "to": "PS",
+     "reply": true,
+     "actor": "PS"
+    },
+    {
+     "n": "42",
+     "label": "Find partner user; create session",
+     "actor": "PS",
+     "note": true
+    },
+    {
+     "n": "43",
+     "label": "Partner session token (SDK memory only)",
+     "from": "PS",
+     "to": "SDK",
+     "reply": true,
+     "actor": "SDK"
+    },
+    {
+     "n": "44",
+     "label": "Show signed-in SDK screen",
+     "from": "SDK",
+     "to": "U",
+     "reply": true,
+     "actor": "U"
+    },
+    {
+     "n": "39a",
+     "label": "400 invalid_grant",
+     "from": "MAS",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "39b",
+     "label": "Error",
+     "from": "PG",
+     "to": "PS",
+     "reply": true,
+     "actor": "PS"
+    },
+    {
+     "n": "39c",
+     "label": "Error",
+     "from": "PS",
+     "to": "SDK",
+     "reply": true,
+     "actor": "SDK"
+    },
+    {
+     "n": "39d",
+     "label": "Call login() again (new code)",
+     "actor": "SDK",
+     "note": true
+    }
+   ]
+  },
+  "sdk_order": {
+   "sec": 3,
+   "title": "Create order + checksum",
+   "steps": [
+    {
+     "n": "1",
+     "label": "Complete transaction",
+     "from": "U",
+     "to": "SDK",
+     "reply": false,
+     "actor": "SDK"
+    },
+    {
+     "n": "2",
+     "label": "Create order (items, partner session)",
+     "from": "SDK",
+     "to": "PS",
+     "reply": false,
+     "actor": "PS"
+    },
+    {
+     "n": "3",
+     "label": "Set price; create order (orderId, amount, currency, expiry); HMAC over canonical string",
+     "actor": "PS",
+     "note": true
+    },
+    {
+     "n": "4",
+     "label": "Order info + checksum",
+     "from": "PS",
+     "to": "SDK",
+     "reply": true,
+     "actor": "SDK"
+    }
+   ]
+  },
+  "sdk_verify": {
+   "sec": 3,
+   "title": "Verify transaction",
+   "steps": [
+    {
+     "n": "5",
+     "label": "Host API: openPayment(order, checksum)",
+     "from": "SDK",
+     "to": "APP",
+     "reply": false,
+     "actor": "APP"
+    },
+    {
+     "n": "5a",
+     "label": "Check caller: SDK instance of the open Mini App; one sheet at a time; take appId from the open Mini App",
+     "actor": "APP",
+     "note": true
+    },
+    {
+     "n": "6",
+     "label": "Verify Transaction API (appId from MB App, order, checksum)",
+     "from": "APP",
+     "to": "PG",
+     "reply": false,
+     "actor": "PG"
+    },
+    {
+     "n": "7",
+     "label": "Forward API (app gateway: session token, rate limit)",
+     "from": "PG",
+     "to": "MBE",
+     "reply": false,
+     "actor": "MBE"
+    },
+    {
+     "n": "8",
+     "label": "Verify transaction",
+     "from": "MBE",
+     "to": "MAS",
+     "reply": false,
+     "actor": "MAS"
+    },
+    {
+     "n": "9",
+     "label": "order.appId == appId; HMAC with that partner's key; amount / currency / partnerUserId / expiry; same PENDING order → same paymentRef",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "10",
+     "label": "Save txn PENDING (bound to customer + appId, expiry = min(order, TTL))",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "11",
+     "label": "Payment info (paymentRef, merchant from registry, amount, currency)",
+     "from": "MAS",
+     "to": "MBE",
+     "reply": true,
+     "actor": "MBE"
+    },
+    {
+     "n": "12",
+     "label": "Payment info",
+     "from": "MBE",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "13",
+     "label": "Payment info",
+     "from": "PG",
+     "to": "APP",
+     "reply": true,
+     "actor": "APP"
+    },
+    {
+     "n": "55",
+     "label": "Error (errorCode)",
+     "from": "MAS",
+     "to": "MBE",
+     "reply": true,
+     "actor": "MBE"
+    },
+    {
+     "n": "56",
+     "label": "Error",
+     "from": "MBE",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "57",
+     "label": "Error",
+     "from": "PG",
+     "to": "APP",
+     "reply": true,
+     "actor": "APP"
+    },
+    {
+     "n": "58",
+     "label": "Host API callback (FAILED, errorCode)",
+     "from": "APP",
+     "to": "SDK",
+     "reply": true,
+     "actor": "SDK"
+    },
+    {
+     "n": "59",
+     "label": "Display transaction result",
+     "from": "SDK",
+     "to": "U",
+     "reply": true,
+     "actor": "U"
+    }
+   ]
+  },
+  "sdk_return": {
+   "sec": 3,
+   "title": "Return to SDK screen",
+   "steps": [
+    {
+     "n": "46",
+     "label": "Host API callback (status, paymentRef)",
+     "from": "APP",
+     "to": "SDK",
+     "reply": true,
+     "actor": "SDK"
+    },
+    {
+     "n": "47",
+     "label": "Inquiry order status",
+     "from": "SDK",
+     "to": "PS",
+     "reply": false,
+     "actor": "PS"
+    },
+    {
+     "n": "47a",
+     "label": "Inquiry Payment Status API (paymentRef or orderId, signed)",
+     "from": "PS",
+     "to": "PG",
+     "reply": false,
+     "actor": "PG"
+    },
+    {
+     "n": "47b",
+     "label": "Forward API (partner gateway: IP allowlist + mTLS, rate limit)",
+     "from": "PG",
+     "to": "MAS",
+     "reply": false,
+     "actor": "MAS"
+    },
+    {
+     "n": "47ba",
+     "label": "Check paymentRef / orderId belongs to the caller's appId",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "47c",
+     "label": "Status: PENDING / INITIATED / PROCESSING / SUCCESS / FAILED / EXPIRED",
+     "from": "MAS",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "47d",
+     "label": "Payment status",
+     "from": "PG",
+     "to": "PS",
+     "reply": true,
+     "actor": "PS"
+    },
+    {
+     "n": "47e",
+     "label": "Update order status if final",
+     "actor": "PS",
+     "note": true
+    },
+    {
+     "n": "48",
+     "label": "Order status",
+     "from": "PS",
+     "to": "SDK",
+     "reply": true,
+     "actor": "SDK"
+    }
+   ]
+  },
+  "sdk_close": {
+   "sec": 4,
+   "title": "Close",
+   "steps": [
+    {
+     "n": "20",
+     "label": "Host API: close() (or user taps native X)",
+     "from": "SDK",
+     "to": "APP",
+     "reply": false,
+     "actor": "APP"
+    },
+    {
+     "n": "21",
+     "label": "Close SDK screens, release the host API; SDK keeps no bank data",
+     "actor": "APP",
+     "note": true
+    },
+    {
+     "n": "22",
+     "label": "Back to native Mini App list",
+     "from": "APP",
+     "to": "U",
+     "reply": false,
+     "actor": "U"
+    }
+   ]
+  },
+  "a2a_open": {
+   "sec": 2,
+   "title": "Open partner app & link account",
+   "steps": [
+    {
+     "n": "A1",
+     "label": "Build the registered appLink (verified HTTPS link); no code, no customer data; never a custom URL scheme",
+     "actor": "APP",
+     "note": true
+    },
+    {
+     "n": "A2",
+     "label": "Open partner app via verified link (launch only)",
+     "from": "APP",
+     "to": "PA",
+     "reply": false,
+     "actor": "PA"
+    },
+    {
+     "n": "A2a",
+     "label": "Link opens the registered store / web page",
+     "actor": "APP",
+     "note": true
+    },
+    {
+     "n": "A3",
+     "label": "Show signed-in partner app (no linking needed)",
+     "from": "PA",
+     "to": "U",
+     "reply": true,
+     "actor": "U"
+    },
+    {
+     "n": "A4",
+     "label": "Create state + codeVerifier, keep both in app secure storage; codeChallenge = SHA-256(codeVerifier)",
+     "actor": "PA",
+     "note": true
+    },
+    {
+     "n": "A5",
+     "label": "Open MB App via verified linkLink (appId, state, codeChallenge)",
+     "from": "PA",
+     "to": "APP",
+     "reply": false,
+     "actor": "APP"
+    },
+    {
+     "n": "A6",
+     "label": "Sign the customer in (PIN / biometric); run consent & registration (phases 2–3) if not done; ask “Link to this partner?”",
+     "actor": "APP",
+     "note": true
+    },
+    {
+     "n": "A7",
+     "label": "Get Auth Code API (appId, codeChallenge)",
+     "from": "APP",
+     "to": "PG",
+     "reply": false,
+     "actor": "PG"
+    },
+    {
+     "n": "A8",
+     "label": "Forward API",
+     "from": "PG",
+     "to": "MBE",
+     "reply": false,
+     "actor": "MBE"
+    },
+    {
+     "n": "A9",
+     "label": "Request auth code",
+     "from": "MBE",
+     "to": "MAS",
+     "reply": false,
+     "actor": "MAS"
+    },
+    {
+     "n": "A10",
+     "label": "Consent current + registered? Create authCode (1 use, 60 s, customer + appId + codeChallenge)",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "A11",
+     "label": "authCode",
+     "from": "MAS",
+     "to": "MBE",
+     "reply": true,
+     "actor": "MBE"
+    },
+    {
+     "n": "A12",
+     "label": "authCode",
+     "from": "MBE",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "A13",
+     "label": "authCode",
+     "from": "PG",
+     "to": "APP",
+     "reply": true,
+     "actor": "APP"
+    },
+    {
+     "n": "A14",
+     "label": "Return via registered returnLink (authCode, same state)",
+     "from": "APP",
+     "to": "PA",
+     "reply": true,
+     "actor": "PA"
+    },
+    {
+     "n": "A15",
+     "label": "state must equal the one this app created; if not, discard the code and stop",
+     "actor": "PA",
+     "note": true
+    },
+    {
+     "n": "A16",
+     "label": "Send authCode + codeVerifier",
+     "from": "PA",
+     "to": "PS",
+     "reply": false,
+     "actor": "PS"
+    },
+    {
+     "n": "A17",
+     "label": "Exchange Auth Code API (authCode, codeVerifier; mTLS, signed)",
+     "from": "PS",
+     "to": "PG",
+     "reply": false,
+     "actor": "PG"
+    },
+    {
+     "n": "A17a",
+     "label": "Partner gateway (inbound): IP allowlist + mTLS for this clientId, rate limit → Mini App Service",
+     "actor": "PG",
+     "note": true
+    },
+    {
+     "n": "A18",
+     "label": "Forward API",
+     "from": "PG",
+     "to": "MAS",
+     "reply": false,
+     "actor": "MAS"
+    },
+    {
+     "n": "A19",
+     "label": "Check code: unused, unexpired, same appId as caller, SHA-256(codeVerifier) == codeChallenge → mark used",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "A20",
+     "label": "partnerUserId + consented user info",
+     "from": "MAS",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "A21",
+     "label": "partnerUserId + user info",
+     "from": "PG",
+     "to": "PS",
+     "reply": true,
+     "actor": "PS"
+    },
+    {
+     "n": "A22",
+     "label": "Find partner user; create session",
+     "actor": "PS",
+     "note": true
+    },
+    {
+     "n": "A23",
+     "label": "Partner session token (app secure storage)",
+     "from": "PS",
+     "to": "PA",
+     "reply": true,
+     "actor": "PA"
+    },
+    {
+     "n": "A24",
+     "label": "Show signed-in partner app",
+     "from": "PA",
+     "to": "U",
+     "reply": true,
+     "actor": "U"
+    },
+    {
+     "n": "A19a",
+     "label": "400 invalid_grant",
+     "from": "MAS",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "A19b",
+     "label": "Error",
+     "from": "PG",
+     "to": "PS",
+     "reply": true,
+     "actor": "PS"
+    },
+    {
+     "n": "A19c",
+     "label": "Error",
+     "from": "PS",
+     "to": "PA",
+     "reply": true,
+     "actor": "PA"
+    },
+    {
+     "n": "A19d",
+     "label": "Start linking again from A4 (new state, new verifier, new code)",
+     "actor": "PA",
+     "note": true
+    }
+   ]
+  },
+  "refund_recovery": {
+   "sec": 4,
+   "title": "Refund recovery (scheduled)",
+   "steps": [
+    {
+     "n": "F1",
+     "label": "Inquiry refund status (refundId)",
+     "from": "MAS",
+     "to": "LG",
+     "reply": false,
+     "actor": "LG"
+    },
+    {
+     "n": "F2",
+     "label": "Check refund transaction",
+     "from": "LG",
+     "to": "CB",
+     "reply": false,
+     "actor": "CB"
+    },
+    {
+     "n": "F3",
+     "label": "REFUNDED / FAILED / NOT_FOUND",
+     "from": "CB",
+     "to": "LG",
+     "reply": true,
+     "actor": "LG"
+    },
+    {
+     "n": "F4",
+     "label": "Refund status",
+     "from": "LG",
+     "to": "MAS",
+     "reply": true,
+     "actor": "MAS"
+    },
+    {
+     "n": "F5",
+     "label": "REFUNDED → REFUNDED. FAILED → FAILED. No answer → retry; alert ops at 15 min",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "F5a",
+     "label": "Void refund (refundId)",
+     "from": "MAS",
+     "to": "LG",
+     "reply": false,
+     "actor": "LG"
+    },
+    {
+     "n": "F5b",
+     "label": "Void confirmed → FAILED",
+     "from": "LG",
+     "to": "MAS",
+     "reply": true,
+     "actor": "MAS"
+    },
+    {
+     "n": "F6",
+     "label": "Save final refund status + audit log; FAILED frees the amount left to refund",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "F7",
+     "label": "Notify customer (refund), if REFUNDED",
+     "from": "MAS",
+     "to": "MBE",
+     "reply": false,
+     "actor": "MBE"
+    },
+    {
+     "n": "F8",
+     "label": "Push notification",
+     "from": "MBE",
+     "to": "U",
+     "reply": false,
+     "actor": "U"
+    },
+    {
+     "n": "F9",
+     "label": "Partner reads the final status with Get Refund Status (13–16)",
+     "actor": "MAS",
+     "note": true
+    }
+   ]
+  },
+  "a2a_order": {
+   "sec": 3,
+   "title": "Create order & payment (server-to-server)",
+   "steps": [
+    {
+     "n": "D20",
+     "label": "Complete transaction (checkout)",
+     "from": "U",
+     "to": "PA",
+     "reply": false,
+     "actor": "PA"
+    },
+    {
+     "n": "D21",
+     "label": "Create order (items, partner session)",
+     "from": "PA",
+     "to": "PS",
+     "reply": false,
+     "actor": "PS"
+    },
+    {
+     "n": "D22",
+     "label": "Set price; create order (orderId, amount, currency, expiry); HMAC over canonical string",
+     "actor": "PS",
+     "note": true
+    },
+    {
+     "n": "D23",
+     "label": "Create Payment API (order, checksum, partnerUserId; mTLS, signed)",
+     "from": "PS",
+     "to": "PG",
+     "reply": false,
+     "actor": "PG"
+    },
+    {
+     "n": "D23a",
+     "label": "Partner gateway (inbound): IP allowlist + mTLS for this clientId, rate limit → Mini App Service",
+     "actor": "PG",
+     "note": true
+    },
+    {
+     "n": "D24",
+     "label": "Forward API",
+     "from": "PG",
+     "to": "MAS",
+     "reply": false,
+     "actor": "MAS"
+    },
+    {
+     "n": "D25",
+     "label": "order.appId == caller's appId; HMAC with that partner's key; amount / currency / expiry; partnerUserId → linked customer; same PENDING order → same paymentRef",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "D26",
+     "label": "Save txn PENDING (bound to linked customer + appId, expiry = min(order, TTL))",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "D27",
+     "label": "paymentRef + payLink (verified HTTPS link, paymentRef only)",
+     "from": "MAS",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "D28",
+     "label": "paymentRef + payLink",
+     "from": "PG",
+     "to": "PS",
+     "reply": true,
+     "actor": "PS"
+    },
+    {
+     "n": "D29",
+     "label": "Order info + payLink",
+     "from": "PS",
+     "to": "PA",
+     "reply": true,
+     "actor": "PA"
+    },
+    {
+     "n": "D25a",
+     "label": "Error (errorCode)",
+     "from": "MAS",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "D25b",
+     "label": "Error",
+     "from": "PG",
+     "to": "PS",
+     "reply": true,
+     "actor": "PS"
+    },
+    {
+     "n": "D25c",
+     "label": "Error",
+     "from": "PS",
+     "to": "PA",
+     "reply": true,
+     "actor": "PA"
+    },
+    {
+     "n": "D25d",
+     "label": "Display error",
+     "from": "PA",
+     "to": "U",
+     "reply": true,
+     "actor": "U"
+    }
+   ]
+  },
+  "a2a_pay_open": {
+   "sec": 3,
+   "title": "Open MB App & load payment",
+   "steps": [
+    {
+     "n": "D30",
+     "label": "Open MB App via verified payLink (paymentRef)",
+     "from": "PA",
+     "to": "APP",
+     "reply": false,
+     "actor": "APP"
+    },
+    {
+     "n": "D30a",
+     "label": "Link opens the store / web page; payment stays PENDING until it expires",
+     "actor": "PA",
+     "note": true
+    },
+    {
+     "n": "D31",
+     "label": "Sign the customer in first (PIN / biometric); show nothing from the link itself",
+     "actor": "APP",
+     "note": true
+    },
+    {
+     "n": "D32",
+     "label": "Get Payment Info API (paymentRef)",
+     "from": "APP",
+     "to": "PG",
+     "reply": false,
+     "actor": "PG"
+    },
+    {
+     "n": "D33",
+     "label": "Forward API (app gateway: session token, rate limit)",
+     "from": "PG",
+     "to": "MBE",
+     "reply": false,
+     "actor": "MBE"
+    },
+    {
+     "n": "D34",
+     "label": "Get txn (paymentRef, customer)",
+     "from": "MBE",
+     "to": "MAS",
+     "reply": false,
+     "actor": "MAS"
+    },
+    {
+     "n": "D35",
+     "label": "Txn PENDING, not expired, and bound to this signed-in customer",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "D36",
+     "label": "Payment info (paymentRef, merchant from registry, amount, currency)",
+     "from": "MAS",
+     "to": "MBE",
+     "reply": true,
+     "actor": "MBE"
+    },
+    {
+     "n": "D37",
+     "label": "Payment info",
+     "from": "MBE",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "D38",
+     "label": "Payment info",
+     "from": "PG",
+     "to": "APP",
+     "reply": true,
+     "actor": "APP"
+    },
+    {
+     "n": "D35a",
+     "label": "Error (errorCode)",
+     "from": "MAS",
+     "to": "MBE",
+     "reply": true,
+     "actor": "MBE"
+    },
+    {
+     "n": "D35b",
+     "label": "Error",
+     "from": "MBE",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "D35c",
+     "label": "Error",
+     "from": "PG",
+     "to": "APP",
+     "reply": true,
+     "actor": "APP"
+    },
+    {
+     "n": "D35d",
+     "label": "Show native error; return to partner app with FAILED (errorCode) via returnLink",
+     "actor": "APP",
+     "note": true
+    }
+   ]
+  },
+  "a2a_return": {
+   "sec": 3,
+   "title": "Return to partner app",
+   "steps": [
+    {
+     "n": "D39",
+     "label": "Build the registered returnLink (verified HTTPS link) + paymentRef + status hint",
+     "actor": "APP",
+     "note": true
+    },
+    {
+     "n": "D40",
+     "label": "Open partner app via returnLink (status, paymentRef)",
+     "from": "APP",
+     "to": "PA",
+     "reply": true,
+     "actor": "PA"
+    },
+    {
+     "n": "D41",
+     "label": "Inquiry order status",
+     "from": "PA",
+     "to": "PS",
+     "reply": false,
+     "actor": "PS"
+    },
+    {
+     "n": "D41a",
+     "label": "Inquiry Payment Status API (paymentRef or orderId, signed)",
+     "from": "PS",
+     "to": "PG",
+     "reply": false,
+     "actor": "PG"
+    },
+    {
+     "n": "D41b",
+     "label": "Forward API (partner gateway: IP allowlist + mTLS, rate limit)",
+     "from": "PG",
+     "to": "MAS",
+     "reply": false,
+     "actor": "MAS"
+    },
+    {
+     "n": "D41c",
+     "label": "Check paymentRef / orderId belongs to the caller's appId",
+     "actor": "MAS",
+     "note": true
+    },
+    {
+     "n": "D41d",
+     "label": "Status: PENDING / INITIATED / PROCESSING / SUCCESS / FAILED / EXPIRED",
+     "from": "MAS",
+     "to": "PG",
+     "reply": true,
+     "actor": "PG"
+    },
+    {
+     "n": "D41e",
+     "label": "Payment status",
+     "from": "PG",
+     "to": "PS",
+     "reply": true,
+     "actor": "PS"
+    },
+    {
+     "n": "D41f",
+     "label": "Update order status if final",
+     "actor": "PS",
+     "note": true
+    },
+    {
+     "n": "D42",
+     "label": "Order status",
+     "from": "PS",
+     "to": "PA",
+     "reply": true,
+     "actor": "PA"
+    },
+    {
+     "n": "D43",
+     "label": "Display transaction result",
+     "from": "PA",
+     "to": "U",
+     "reply": true,
+     "actor": "U"
+    },
+    {
+     "n": "D44",
+     "label": "On next foreground, ask the partner server for the order status (D41–D42)",
+     "actor": "PA",
+     "note": true
+    }
+   ]
+  }
+ },
+ "flows": {
+  "webview": {
+   "sections": [
+    {
+     "n": 1,
+     "title": "Open Mini App list"
+    },
+    {
+     "n": 2,
+     "title": "Open Mini App"
+    },
+    {
+     "n": 3,
+     "title": "Purchase via Mini App"
+    },
+    {
+     "n": 4,
+     "title": "After purchase"
+    }
+   ],
+   "phases": [
+    "list",
+    "detail",
+    "consent",
+    "open_site",
+    "create_order",
+    "verify",
+    "init",
+    "confirm",
+    "return_page",
+    "notify",
+    "recovery",
+    "refund",
+    "refund_recovery",
+    "recon",
+    "close"
+   ]
+  },
+  "api": {
+   "sections": [
+    {
+     "n": 1,
+     "title": "Open Mini App list"
+    },
+    {
+     "n": 2,
+     "title": "Open Mini App (native screens)"
+    },
+    {
+     "n": 3,
+     "title": "Purchase via native screens"
+    },
+    {
+     "n": 4,
+     "title": "After purchase"
+    }
+   ],
+   "phases": [
+    "list",
+    "detail_api",
+    "consent",
+    "api_content",
+    "api_order",
+    "init",
+    "confirm",
+    "api_result",
+    "notify",
+    "recovery",
+    "refund",
+    "refund_recovery",
+    "recon"
+   ]
+  },
+  "sdk": {
+   "sections": [
+    {
+     "n": 1,
+     "title": "Open Mini App list"
+    },
+    {
+     "n": 2,
+     "title": "Open Mini App (partner SDK)"
+    },
+    {
+     "n": 3,
+     "title": "Purchase via partner SDK"
+    },
+    {
+     "n": 4,
+     "title": "After purchase"
+    }
+   ],
+   "phases": [
+    "list",
+    "detail_sdk",
+    "consent",
+    "sdk_open",
+    "sdk_order",
+    "sdk_verify",
+    "init",
+    "confirm",
+    "sdk_return",
+    "notify",
+    "recovery",
+    "refund",
+    "refund_recovery",
+    "recon",
+    "sdk_close"
+   ]
+  },
+  "a2a": {
+   "sections": [
+    {
+     "n": 1,
+     "title": "Open Mini App list"
+    },
+    {
+     "n": 2,
+     "title": "Open partner app"
+    },
+    {
+     "n": 3,
+     "title": "Purchase via partner app"
+    },
+    {
+     "n": 4,
+     "title": "After purchase"
+    }
+   ],
+   "phases": [
+    "list",
+    "detail_a2a",
+    "consent",
+    "a2a_open",
+    "a2a_order",
+    "a2a_pay_open",
+    "init",
+    "confirm",
+    "a2a_return",
+    "notify",
+    "recovery",
+    "refund",
+    "refund_recovery",
+    "recon"
+   ]
+  }
+ }
+}

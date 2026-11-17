@@ -30,4 +30,14 @@ mock:
   portal-url: ${PORTAL_URL:http://localhost:8081}
   bank-url: ${BANK_URL:http://localhost:8082}
   partner-url: ${PARTNER_URL:http://localhost:8083}
-  bank-secret: ${BANK_SECRET:bank-shared-secret}
+  web-url: ${WEB_URL:http://localhost:3000}
+  # HMAC secret for the bank's internal calls (C2, C3, C8). Stand-in for the bank's internal service auth.
+  bank-secret: ${BANK_SECRET:bank-internal-secret}
+  # ES256 public keys (X.509 SPKI, base64). Exchanged once at partner onboarding.
+  bank-public-key: MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEl7xzZhUA3j5LgauXVwUfnAP3BxrpzIMfgwH8kNvikx+UqeU9zWO2NBh7pWcE7RKOGo7FjqNlW8M1M9y1cq2z3Q==
+  partner-public-key: MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEc26vrokbBae3aQNqPZ6TPoUiBwt9g7DUsLpypXzc45PYfxgJBYAsB4OIWFIJi8lf3VgTw2QrkROeRMb5nsXztA==
+  # Mock mTLS: fingerprints of each side's client certificate.
+  bank-cert: sha256:mb-bank-client-cert-01
+  partner-cert: sha256:starlight-client-cert-01
+  # HMAC order key, one per partner (bank and partner both hold it).
+  partner-order-key: ${PARTNER_ORDER_KEY:order-key-starlight}

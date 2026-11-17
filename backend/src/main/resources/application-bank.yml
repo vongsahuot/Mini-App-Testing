@@ -8,6 +8,11 @@ spring:
         default_schema: bank
 
 mock:
-  actor: BS
-  settlement-account: 999-ESCROW-01
-  jwt-ttl-seconds: 300
+  merchant-account: 999-STARLIGHT-01
+  payment-limit: 1000.00
+  otp-threshold: 20.00
+  max-auth-attempts: 3
+  # Timeouts are ordered LG < MAS < MBE < PG < app. MBE waits this long for Mini App Service.
+  mas-timeout-ms: 8000
+  # How long a chaos "timeout" makes Local Gateway sleep (longer than the portal's LG timeout).
+  lg-chaos-delay-ms: 4500

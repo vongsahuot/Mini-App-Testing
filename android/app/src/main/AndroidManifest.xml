@@ -12,14 +12,30 @@
         android:theme="@style/Theme.MiniBank"
         android:usesCleartextTraffic="true">
 
+        <!-- singleTask: an App-to-App link opened from the browser reaches the running instance
+             (onNewIntent) instead of starting a second, signed-out copy of MB App. -->
         <activity
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"
             android:exported="true"
+            android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- App-to-App: verified http(s) links only, never a custom scheme (docs/CONTRACT.md).
+                 localhost cannot be verified by Android: enable "Open supported links" for MB App
+                 in the system settings (see README). -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="http" />
+                <data android:host="localhost" />
+                <data android:port="3000" />
+                <data android:pathPrefix="/links/mbapp/" />
             </intent-filter>
         </activity>
     </application>

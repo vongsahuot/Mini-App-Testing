@@ -15,12 +15,15 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
+/** Daily reconciliation report (4:19). */
 @Entity
 @Table(name = "reconciliations")
 public class Reconciliation {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) public Long id;
     public String date;
+    public int entries;
     public int matched;
+    public int fixed;
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "reconciliation_mismatches")
     @Column(length = 1000)

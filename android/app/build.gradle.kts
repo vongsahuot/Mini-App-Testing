@@ -13,11 +13,16 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = 1
-        versionName = "1.0"
+        versionName = "5.2.0"
 
         // Reached via `adb reverse` (see adb-reverse.ps1 / adb-reverse.sh).
+        // Bank: app gateway /gw/app/v1. Portal: only POST /api/v1/admin/trace.
+        // Web: partner page, partner app and /links/*. Partner: only used by the embedded Starlight SDK.
         buildConfigField("String", "BANK_URL", "\"http://localhost:8082\"")
         buildConfigField("String", "PORTAL_URL", "\"http://localhost:8081\"")
+        buildConfigField("String", "WEB_URL", "\"http://localhost:3000\"")
+        buildConfigField("String", "PARTNER_URL", "\"http://localhost:8083\"")
+        buildConfigField("String", "APP_VERSION", "\"5.2.0\"")
     }
 
     buildTypes {

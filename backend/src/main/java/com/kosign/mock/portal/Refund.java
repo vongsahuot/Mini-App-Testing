@@ -17,18 +17,21 @@ public class Refund {
 
     @Id public String refundId;
     public String clientId;
-    public String paymentId;
+    public String paymentRef;
+    public String customerId;
     @Column(precision = 14, scale = 2) public BigDecimal amount;
+    public String currency;
     public String reason;
     public String status;
     public String refundTxnId;
+    public boolean alerted;
     public Instant createdAt;
     public Instant updatedAt;
 
     public interface Repo extends JpaRepository<Refund, String> {
         List<Refund> findByStatusAndUpdatedAtBefore(String status, Instant before);
 
-        List<Refund> findByPaymentId(String paymentId);
+        List<Refund> findByPaymentRef(String paymentRef);
 
         List<Refund> findAllByOrderByCreatedAtDesc();
     }

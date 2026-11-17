@@ -7,14 +7,13 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.time.Instant;
 
-/** Bank app login session. deviceSecret stands in for a device-bound Keystore key. */
+/** MB App login session; its token is the customer session token checked by the app gateway (C1). */
 @Entity
 @Table(name = "sessions")
 public class BankSession {
     @Id public String token;
     public String customerId;
     public String deviceId;
-    public String deviceSecret;
     public Instant createdAt;
 
     public interface Repo extends JpaRepository<BankSession, String> {}

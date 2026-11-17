@@ -11,17 +11,15 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 
-/** One use, short lived, bound to clientId + customer + scopes. */
+/** One use, 60 s, bound to customer + appId (and to an S256 code challenge for App-to-App). */
 @Entity
 @Table(name = "auth_codes")
 public class AuthCode {
     @Id public String code;
-    public String clientId;
     public String appId;
+    public String clientId;
     public String customerId;
-    public String scopes;
-    public String customerName;
-    public String customerPhone;
+    public String codeChallenge;
     public Instant expiresAt;
     public boolean used;
 

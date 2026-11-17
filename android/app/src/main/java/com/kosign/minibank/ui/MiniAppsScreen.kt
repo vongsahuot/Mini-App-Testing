@@ -34,7 +34,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -43,8 +42,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kosign.minibank.AppViewModel
-import com.kosign.minibank.Banner
 import com.kosign.minibank.MiniApp
+import com.kosign.minibank.Types
 
 private const val COLUMNS = 4
 
@@ -53,7 +52,7 @@ fun MiniAppsScreen(vm: AppViewModel) {
     BackHandler { vm.backToHome() }
     val data = vm.miniApps
 
-    // Step 5 is reported once the list (cached or fresh) has been composed.
+    // 1:9 is reported once a list from the server (200 or 304) has been composed.
     LaunchedEffect(data) {
         if (data != null) vm.onMiniAppsRendered(data)
     }
@@ -61,7 +60,7 @@ fun MiniAppsScreen(vm: AppViewModel) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Mini apps") },
+                title = { Text("Mini Apps") },
                 navigationIcon = {
                     IconButton(onClick = { vm.backToHome() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -83,7 +82,7 @@ fun MiniAppsScreen(vm: AppViewModel) {
                     CircularProgressIndicator()
                 }
                 data == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("Could not load mini apps")
+                    Text("Could not load Mini Apps")
                 }
                 else -> Column(
                     Modifier
@@ -91,10 +90,6 @@ fun MiniAppsScreen(vm: AppViewModel) {
                         .verticalScroll(rememberScrollState())
                         .padding(16.dp),
                 ) {
-                    data.banners.forEach { banner ->
-                        BannerCard(banner) { vm.openBanner(banner) }
-                        Spacer(Modifier.height(12.dp))
-                    }
                     data.sections.forEach { section ->
                         Spacer(Modifier.height(8.dp))
                         Text(section.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -109,31 +104,15 @@ fun MiniAppsScreen(vm: AppViewModel) {
                             Spacer(Modifier.height(8.dp))
                         }
                     }
+                    if (data.allApps.isEmpty()) Text("No Mini Apps for you yet")
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "List from ${data.source} · cache TTL ${data.cacheTtlSeconds}s",
+                        "List from ${data.source}" + (data.etag?.let { " · ETag $it" } ?: ""),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun BannerCard(banner: Banner, onClick: () -> Unit) {
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(parseColor(banner.color))
-            .clickable(onClick = onClick)
-            .padding(20.dp),
-    ) {
-        Text(banner.title, color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        if (banner.subtitle.isNotBlank()) {
-            Text(banner.subtitle, color = Color.White.copy(alpha = 0.85f))
         }
     }
 }
@@ -147,29 +126,12 @@ private fun AppTile(app: MiniApp, modifier: Modifier, onClick: () -> Unit) {
             .padding(vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Box {
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.primaryContainer,
-                modifier = Modifier
-                    .size(56.dp)
-                    .alpha(if (app.enabled) 1f else 0.5f),
-            ) {
-                Box(contentAlignment = Alignment.Center) { Text(app.icon, fontSize = 28.sp) }
-            }
-            val badge = app.badge
-            if (badge != null) {
-                Text(
-                    badge,
-                    color = Color.White,
-                    fontSize = 10.sp,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFFE5484D))
-                        .padding(horizontal = 5.dp, vertical = 1.dp),
-                )
-            }
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.primaryContainer,
+            modifier = Modifier.size(56.dp),
+        ) {
+            Box(contentAlignment = Alignment.Center) { Text(app.icon, fontSize = 28.sp) }
         }
         Spacer(Modifier.height(6.dp))
         Text(
@@ -179,5 +141,24 @@ private fun AppTile(app: MiniApp, modifier: Modifier, onClick: () -> Unit) {
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            Types.label(app.type),
+            color = typeColor(app.type),
+            fontSize = 9.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier
+                .clip(RoundedCornerShape(6.dp))
+                .background(typeColor(app.type).copy(alpha = 0.12f))
+                .padding(horizontal = 5.dp, vertical = 1.dp),
+        )
     }
+}
+
+private fun typeColor(type: String): Color = when (type) {
+    Types.WEBVIEW -> Color(0xFF1E6FD9)
+    Types.API -> Color(0xFF15803D)
+    Types.SDK -> Color(0xFFB45309)
+    Types.A2A -> Color(0xFF7C3AED)
+    else -> Color.Gray
 }

@@ -13,6 +13,8 @@ x-backend: &backend
     PORTAL_URL: http://portal:8081
     BANK_URL: http://bank:8082
     PARTNER_URL: http://partner:8083
+    # Browser-facing URL of the web app (entry URLs, app links, payLinks).
+    WEB_URL: http://localhost:3000
 
 services:
   db:
@@ -31,19 +33,16 @@ services:
       timeout: 3s
       retries: 20
 
-  # KOSIGN Portal (lane KP)
+  # Mini App Service (MAS), partner gateway (PG) and the Kafka mock (KF)
   portal:
     <<: *backend
     environment:
       <<: *backend-env
       SPRING_PROFILES_ACTIVE: portal
-      PARTNER_ENTRY_URL: http://localhost:3000/partner/movie-tickets
-      PARTNER_ALLOWED_ORIGINS: http://localhost:3000
-      PARTNER_WEBHOOK_URL: http://partner:8083/webhooks/kosign
     ports:
       - "8081:8081"
 
-  # Bank Server mock (lane BS)
+  # App gateway (PG), Mobile Backend (MBE), Local Gateway (LG) and Core Banking (CB)
   bank:
     <<: *backend
     environment:
@@ -52,7 +51,7 @@ services:
     ports:
       - "8082:8082"
 
-  # Partner Server mock, "Movie tickets" (lane PS)
+  # Partner server, "Starlight Cinema" (PS)
   partner:
     <<: *backend
     environment:
@@ -61,7 +60,7 @@ services:
     ports:
       - "8083:8083"
 
-  # Next.js: partner page (PP), bank app simulator (APP) and test console
+  # Next.js: MB App simulator (APP), partner page (PC), SDK, partner app (PA) and the test console
   web:
     build: ./web
     image: minipay-web:local

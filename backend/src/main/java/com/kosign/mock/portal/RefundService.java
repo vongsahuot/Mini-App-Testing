@@ -5,119 +5,187 @@ import com.kosign.mock.common.Http;
 import com.kosign.mock.common.Json;
 import com.kosign.mock.common.Trace;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpMethod;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 
-/** Partner-initiated full or partial refunds (steps 55–60), idempotent by refundId. */
+/**
+ * Partner-initiated refunds (4:2–4:10), idempotent by refundId and never more than what is left to refund,
+ * plus the refund recovery job (4:F1–F9) for refunds stuck in REFUND_PENDING.
+ */
 @Service
 public class RefundService {
     private final Refund.Repo refunds;
     private final Payment.Repo payments;
-    private final WebhookService webhooks;
-    private final Http http;
+    private final BankClients bank;
+    private final Ops ops;
     private final Trace trace;
-    private final String bankUrl, bankSecret;
+    private final Duration stuckAfter, safeWindow, alertAfter;
 
-    public RefundService(Refund.Repo refunds, Payment.Repo payments, WebhookService webhooks, Http http, Trace trace,
-                         @Value("${mock.bank-url}") String bankUrl, @Value("${mock.bank-secret}") String bankSecret) {
+    public RefundService(Refund.Repo refunds, Payment.Repo payments, BankClients bank, Ops ops, Trace trace,
+                         @Value("${mock.recovery.stuck-after-seconds}") long stuckAfter,
+                         @Value("${mock.recovery.not-found-safe-window-seconds}") long safeWindow,
+                         @Value("${mock.recovery.alert-after-seconds}") long alertAfter) {
         this.refunds = refunds;
         this.payments = payments;
-        this.webhooks = webhooks;
-        this.http = http;
+        this.bank = bank;
+        this.ops = ops;
         this.trace = trace;
-        this.bankUrl = bankUrl;
-        this.bankSecret = bankSecret;
+        this.stuckAfter = Duration.ofSeconds(stuckAfter);
+        this.safeWindow = Duration.ofSeconds(safeWindow);
+        this.alertAfter = Duration.ofSeconds(alertAfter);
     }
 
     public Map<String, Object> view(Refund r) {
-        Payment p = payments.findById(r.paymentId).orElse(null);
-        return Json.obj("refundId", r.refundId, "paymentId", r.paymentId, "amount", r.amount, "status", r.status,
-                "refundTxnId", r.refundTxnId, "reason", r.reason,
-                "paymentStatus", p == null ? null : p.status,
-                "paymentRefundedAmount", p == null ? null : p.refundedAmount);
+        Payment p = payments.findById(r.paymentRef).orElse(null);
+        BigDecimal refunded = p == null ? BigDecimal.ZERO : p.refundedAmount;
+        return Json.obj("refundId", r.refundId, "paymentRef", r.paymentRef, "amount", r.amount, "status", r.status,
+                "refundTxnId", r.refundTxnId, "reason", r.reason, "refundedTotal", refunded,
+                "remaining", p == null ? null : p.amount.subtract(refunded).subtract(pending(p.paymentRef)));
     }
 
-    public synchronized Refund request(String clientId, String paymentId, String refundId, BigDecimal amount, String reason) {
+    private BigDecimal pending(String paymentRef) {
+        return refunds.findByPaymentRef(paymentRef).stream().filter(x -> Refund.PENDING.equals(x.status))
+                .map(x -> x.amount).reduce(new BigDecimal("0.00"), BigDecimal::add);
+    }
+
+    // ---------- 4:2–4:10 ----------
+
+    public synchronized Refund request(Partner caller, String paymentRef, String refundId, BigDecimal amount, String reason) {
+        trace.record("MAS", "4:2", null, "Forward API (partner gateway: IP allowlist + mTLS, rate limit)", refundId + ", " + amount, paymentRef);
         Refund existing = refunds.findById(refundId).orElse(null);
         if (existing != null) {
-            if (!existing.clientId.equals(clientId) || !existing.paymentId.equals(paymentId)) {
+            if (!existing.clientId.equals(caller.clientId) || !existing.paymentRef.equals(paymentRef)) {
                 throw ApiException.conflict("REFUND_ID_CONFLICT", "refundId already used for another payment");
             }
-            trace.record(56, "Same refundId → return existing refund", existing.status, paymentId);
+            trace.record("MAS", "4:3", null, "Same refundId → return its result", existing.status, paymentRef);
             return existing;
         }
-        Payment p = payments.findById(paymentId).filter(x -> x.clientId.equals(clientId))
-                .orElseThrow(() -> ApiException.notFound("Payment " + paymentId + " not found"));
-        if (!Payment.PAID.equals(p.status) && !Payment.PARTIALLY_REFUNDED.equals(p.status)) {
-            trace.record(56, "Refund rejected", "payment is " + p.status, paymentId);
-            throw ApiException.conflict("NOT_REFUNDABLE", "Payment is " + p.status);
-        }
-        BigDecimal pending = refunds.findByPaymentId(paymentId).stream()
-                .filter(r -> Refund.PENDING.equals(r.status)).map(r -> r.amount).reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal remaining = p.amount.subtract(p.refundedAmount).subtract(pending);
+        Payment p = payments.findById(paymentRef).filter(x -> x.clientId.equals(caller.clientId)).orElse(null);
+        BigDecimal remaining = p == null ? BigDecimal.ZERO : p.amount.subtract(p.refundedAmount).subtract(pending(paymentRef));
         if (amount == null) amount = remaining;
-        if (amount.signum() <= 0 || amount.compareTo(remaining) > 0) {
-            trace.record(56, "Refund rejected", "amount " + amount + " > remaining " + remaining, paymentId);
-            throw ApiException.conflict("AMOUNT_EXCEEDS_REMAINING", "Refund amount must be > 0 and <= " + remaining);
+        ApiException problem = p == null ? ApiException.notFound("No payment " + paymentRef + " for " + caller.clientId)
+                : !Payment.SUCCESS.equals(p.status) ? ApiException.conflict("NOT_REFUNDABLE", "Payment is " + p.status)
+                : amount.signum() <= 0 || amount.compareTo(remaining) > 0
+                ? ApiException.conflict("AMOUNT_EXCEEDS_REMAINING", "Refund must be > 0 and ≤ " + remaining) : null;
+        if (problem != null) {
+            trace.record("MAS", "4:3", null, "Payment SUCCESS? amount ≤ remaining? No", problem.getMessage(), paymentRef);
+            throw problem;
         }
-
         Instant now = Instant.now();
         Refund r = new Refund();
         r.refundId = refundId;
-        r.clientId = clientId;
-        r.paymentId = paymentId;
+        r.clientId = caller.clientId;
+        r.paymentRef = paymentRef;
+        r.customerId = p.customerId;
         r.amount = amount;
+        r.currency = p.currency;
         r.reason = reason;
         r.status = Refund.PENDING;
         r.createdAt = now;
         r.updatedAt = now;
         refunds.save(r);
-        trace.record(56, "Idempotent by refundId, amount ≤ remaining → REFUND_PENDING", amount + " of " + remaining, paymentId);
-        return process(r);
-    }
+        trace.record("MAS", "4:3", null, "Same refundId → return its result. Payment SUCCESS? amount ≤ remaining? → save REFUND_PENDING",
+                amount + " of " + remaining + " remaining", paymentRef);
 
-    /** Ask the bank to move the money back; on a transport failure the refund stays pending and is retried. */
-    synchronized Refund process(Refund r) {
-        Payment p = payments.findById(r.paymentId).orElseThrow();
-        Http.Resp resp = http.signed(HttpMethod.POST, bankUrl + "/api/v1/bank/refunds",
-                Json.obj("refundId", r.refundId, "paymentId", p.paymentId, "bankTxnId", p.bankTxnId,
-                        "amount", r.amount, "currency", p.currency),
-                WebhookService.SENDER_ID, bankSecret);
-        r.updatedAt = Instant.now();
+        Http.Resp resp = bank.lg("refunds", Json.obj("refundId", refundId, "paymentRef", paymentRef, "bankTxnId", p.bankTxnId,
+                "amount", amount, "currency", p.currency));
         if (!resp.ok()) {
-            refunds.save(r);
-            trace.record(0, "Bank refund call failed, will retry", resp.error(), p.paymentId);
+            trace.record("MAS", "4:7", null, "No answer from Local Gateway → stays REFUND_PENDING", resp.error(), paymentRef);
             return r;
         }
         String status = Json.str(resp.body(), "status");
-        r.refundTxnId = Json.str(resp.body(), "refundTxnId");
-        trace.record(59, "Bank answered " + status, r.refundTxnId, p.paymentId);
-        if (Refund.REFUNDED.equals(status)) {
-            r.status = Refund.REFUNDED;
-            p.refundedAmount = p.refundedAmount.add(r.amount);
-            p.status = p.refundedAmount.compareTo(p.amount) >= 0 ? Payment.REFUNDED : Payment.PARTIALLY_REFUNDED;
-            p.updatedAt = r.updatedAt;
-            payments.save(p);
-        } else {
-            r.status = Refund.FAILED;
-        }
-        refunds.save(r);
-        webhooks.enqueue(r.clientId, Refund.REFUNDED.equals(r.status) ? "refund.succeeded" : "refund.failed", p.paymentId,
-                Json.obj("refundId", r.refundId, "paymentId", p.paymentId, "orderId", p.orderId, "amount", r.amount,
-                        "status", r.status, "refundTxnId", r.refundTxnId,
-                        "paymentStatus", p.status, "paymentRefundedAmount", p.refundedAmount));
-        return r;
+        trace.record("MAS", "4:7", null, "REFUNDED + refundTxnId / FAILED", status + " " + Json.str(resp.body(), "refundTxnId"), paymentRef);
+        finish(r, status, Json.str(resp.body(), "refundTxnId"), "4:8", "Save refund status (REFUNDED / FAILED) + audit log", "4:9", "4:10");
+        return refunds.findById(refundId).orElseThrow();
     }
 
-    @Scheduled(fixedDelay = 15_000, initialDelay = 15_000)
-    public void retryPending() {
-        for (Refund r : refunds.findByStatusAndUpdatedAtBefore(Refund.PENDING, Instant.now().minusSeconds(10))) {
-            process(r);
+    public Refund status(Partner caller, String paymentRef, String refundId) {
+        trace.record("MAS", "4:14", null, "Forward API (partner gateway: IP allowlist + mTLS, rate limit)", refundId, paymentRef);
+        return refunds.findById(refundId).filter(r -> r.clientId.equals(caller.clientId) && r.paymentRef.equals(paymentRef))
+                .orElseThrow(() -> ApiException.notFound("No refund " + refundId + " for payment " + paymentRef));
+    }
+
+    /** Saves the final refund status once (+ audit); a REFUNDED refund adds to the payment's refunded total and tells the customer. */
+    private synchronized boolean finish(Refund r, String status, String refundTxnId, String saveStep, String saveTitle,
+                                        String notifyStep, String pushStep) {
+        Refund fresh = refunds.findById(r.refundId).orElseThrow();
+        if (!Refund.PENDING.equals(fresh.status)) return false;
+        boolean ok = Refund.REFUNDED.equals(status);
+        fresh.status = ok ? Refund.REFUNDED : Refund.FAILED;
+        fresh.refundTxnId = refundTxnId;
+        fresh.updatedAt = Instant.now();
+        refunds.save(fresh);
+        Payment p = payments.findById(fresh.paymentRef).orElseThrow();
+        if (ok) {
+            p.refundedAmount = p.refundedAmount.add(fresh.amount);
+            p.updatedAt = Instant.now();
+            payments.save(p);
+        }
+        ops.audit("mini-app-service", "REFUND_" + fresh.status, fresh.refundId, fresh.amount + " " + fresh.currency + " on " + fresh.paymentRef
+                + (refundTxnId == null ? "" : " (" + refundTxnId + ")"));
+        trace.record("MAS", saveStep, null, saveTitle, fresh.status + (ok ? ", refunded total " + p.refundedAmount : ", amount freed"), fresh.paymentRef);
+        if (ok) {
+            bank.notifyCustomer(fresh.customerId, "REFUND", "Refund received", fresh.amount + " " + fresh.currency + " from " + p.merchantName,
+                    fresh.paymentRef, notifyStep, "4:9".equals(notifyStep) ? "Notify customer (refund)" : "Notify customer (refund), if REFUNDED", pushStep);
+        }
+        return true;
+    }
+
+    // ---------- refund recovery (4:F1–F9) ----------
+
+    @Scheduled(fixedDelayString = "${mock.recovery.interval-ms}", initialDelay = 14_000)
+    public void scheduledRecovery() {
+        ops.runLocked("refund-recovery", Duration.ofMinutes(5), () -> recover(stuckAfter));
+    }
+
+    public synchronized int recover(Duration olderThan) {
+        Instant now = Instant.now();
+        List<Refund> stuck = refunds.findByStatusAndUpdatedAtBefore(Refund.PENDING, now.minus(olderThan));
+        for (Refund r : stuck) {
+            Duration age = Duration.between(r.createdAt, now);
+            trace.note("MAS", "Refund recovery job: REFUND_PENDING for " + age.toSeconds() + " s → ask Local Gateway", r.refundId, r.paymentRef);
+            Http.Resp resp = bank.lg("refunds/inquiry", Json.obj("refundId", r.refundId));
+            if (!resp.ok()) {
+                trace.record("MAS", "4:F5", null, "No answer → retry" + (age.compareTo(alertAfter) > 0 ? "; alert ops" : ""), resp.error(), r.paymentRef);
+                if (age.compareTo(alertAfter) > 0 && !r.alerted) {
+                    r.alerted = true;
+                    refunds.save(r);
+                    ops.alert("REFUND_STUCK", r.refundId, "REFUND_PENDING for " + age.toSeconds() + " s and Local Gateway does not answer");
+                }
+                continue;
+            }
+            String status = Json.str(resp.body(), "status");
+            trace.record("MAS", "4:F4", null, "Refund status", status, r.paymentRef);
+            if ("REFUNDED".equals(status) || "FAILED".equals(status)) {
+                trace.record("MAS", "4:F5", null, status + " → " + status, null, r.paymentRef);
+                done(r, status, Json.str(resp.body(), "refundTxnId"));
+                continue;
+            }
+            if (age.compareTo(safeWindow) < 0) {
+                trace.record("MAS", "4:F5", null, "NOT_FOUND inside the safe window → keep REFUND_PENDING", null, r.paymentRef);
+                continue;
+            }
+            Http.Resp v = bank.lg("refunds/void", Json.obj("refundId", r.refundId));
+            String vs = v.ok() ? Json.str(v.body(), "status") : null;
+            if ("VOIDED".equals(vs)) {
+                trace.record("MAS", "4:F5b", null, "Void confirmed → FAILED", null, r.paymentRef);
+                done(r, "FAILED", null);
+            } else if ("POSTED".equals(vs)) {
+                done(r, "REFUNDED", Json.str(v.body(), "refundTxnId"));
+            }
+        }
+        return stuck.size();
+    }
+
+    private void done(Refund r, String status, String refundTxnId) {
+        if (finish(r, status, refundTxnId, "4:F6", "Save final refund status + audit log; FAILED frees the amount left to refund", "4:F7", "4:F8")) {
+            trace.record("MAS", "4:F9", null, "Partner reads the final status with Get Refund Status (13–16)", r.refundId, r.paymentRef);
         }
     }
 }

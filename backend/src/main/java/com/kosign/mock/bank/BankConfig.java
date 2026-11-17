@@ -6,7 +6,10 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
-/** Bank server role (lane BS): bank app backend, core banking ledger and the bank side of KOSIGN. */
+/**
+ * Bank role: the app side of the Public Gateway (PG), Mobile Backend (MBE), Local Gateway (LG)
+ * and Core Banking (CB).
+ */
 @Configuration
 @Profile("bank")
 @ComponentScan("com.kosign.mock.bank")

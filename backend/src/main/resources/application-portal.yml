@@ -8,21 +8,25 @@ spring:
         default_schema: portal
 
 mock:
-  actor: KP
-  pairwise-salt: ${PAIRWISE_SALT:kosign-pairwise-salt}
-  payment-ttl-minutes: 10
+  # ES256 private key of the bank's partner gateway (PKCS#8, base64). Mock only: a real key lives in an HSM.
+  bank-private-key: MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgrcjB7wfY+SOGWoNqWrYPo6/1RftaacYDNZz634Brl46hRANCAASXvHNmFQDePkuBq5dXBR+cA/cHGunMgx+DAfyQ2+KTH5Sp5T3NY7Y0GHulZwTtEo4ajsWOo2VbwzUz3LVyrbPd
+  pairwise-salt: ${PAIRWISE_SALT:mb-pairwise-salt}
   auth-code-ttl-seconds: 60
-  # Real system: scan every 1-2 min for PROCESSING > 3 min. Shortened so tests run quickly.
+  payment-ttl-minutes: 10
+  lg-timeout-ms: 3000
+  # Shortened timings so tests run quickly. Real system in brackets.
   recovery:
-    interval-ms: ${RECOVERY_INTERVAL_MS:15000}
-    stuck-after-seconds: ${RECOVERY_STUCK_AFTER_SECONDS:60}
-    lock-timeout-seconds: ${RECOVERY_LOCK_TIMEOUT_SECONDS:120}
-  webhook:
-    first-retry-seconds: 5
-    max-retry-interval-seconds: 600
-    give-up-after-hours: 24
-  seed:
-    partner-entry-url: ${PARTNER_ENTRY_URL:http://localhost:3000/partner/movie-tickets}
-    partner-allowed-origins: ${PARTNER_ALLOWED_ORIGINS:http://localhost:3000}
-    partner-webhook-url: ${PARTNER_WEBHOOK_URL:http://localhost:8083/webhooks/kosign}
-    partner-secret: ${PARTNER_SECRET:partner-secret-movie}
+    interval-ms: ${RECOVERY_INTERVAL_MS:10000}           # [1 min]
+    stuck-after-seconds: 15                              # [2 min]
+    not-found-safe-window-seconds: 30                    # [10 min]
+    alert-after-seconds: 60                              # [15 min]
+  expiry:
+    interval-ms: 10000                                   # [1 min]
+  notification:
+    retry-delays-seconds: 5,10,20                        # [10 s, 1 min, 10 min]
+    timeout-ms: 10000
+  partner-api:
+    timeout-ms: 5000
+    breaker-failures: 3
+    breaker-open-seconds: 30
+    cache-seconds: 60

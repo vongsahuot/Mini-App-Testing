@@ -1,12 +1,16 @@
 export const PORTAL = "/portal-api";
 export const BANK = "/bank-api";
 export const PARTNER = "/partner-api";
+/** MB App → app gateway (C1) on the bank. */
+export const GW = `${BANK}/gw/app/v1`;
 
 /** Thrown by `api()` on any non-2xx response or network failure. */
 export interface ApiError {
   status: number;
   code: string;
   message: string;
+  /** Any other fields of the error body (e.g. attemptsLeft). */
+  details?: Record<string, unknown>;
 }
 
 export function isApiError(e: unknown): e is ApiError {
@@ -63,7 +67,7 @@ export async function api<T = unknown>(url: string, opts: ApiOptions = {}): Prom
 
   const d = (data ?? {}) as { code?: unknown; message?: unknown; error?: unknown };
   if (typeof d.code === "string") {
-    throw { status: res.status, code: d.code, message: String(d.message ?? res.statusText) } satisfies ApiError;
+    throw { status: res.status, code: d.code, message: String(d.message ?? res.statusText), details: d as Record<string, unknown> } satisfies ApiError;
   }
   // The Next.js proxy answers a plain-text 5xx when the backend is not running.
   const offline = data === null && res.status >= 500;

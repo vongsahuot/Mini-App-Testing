@@ -7,12 +7,17 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.time.Instant;
 
-/** The partner's own login session, created after exchanging the authCode. */
+/**
+ * The partner's own session, created after the authCode exchange (2:42). Kept as an HttpOnly cookie by the
+ * WebView page, in memory by the SDK and in secure storage by the partner app. The bank never sees it.
+ */
 @Entity
 @Table(name = "sessions")
 public class PartnerSession {
     @Id public String token;
-    public String partnerCustomerId;
+    public String appId;
+    public String type;
+    public String partnerUserId;
     public String name;
     public String phone;
     public Instant createdAt;

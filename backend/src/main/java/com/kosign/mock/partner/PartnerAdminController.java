@@ -15,21 +15,26 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 import java.util.Map;
 
+/** Test console endpoints for the partner server. No auth: local mock. */
 @RestController
 @RequestMapping("/api/v1/admin")
 public class PartnerAdminController {
     private final PartnerOrder.Repo orders;
-    private final ProcessedEvent.Repo events;
+    private final PartnerRefund.Repo refunds;
+    private final PartnerUser.Repo users;
     private final PartnerSession.Repo sessions;
+    private final ProcessedEvent.Repo events;
     private final OrderService orderService;
     private final PartnerChaos chaos;
     private final Trace trace;
 
-    public PartnerAdminController(PartnerOrder.Repo orders, ProcessedEvent.Repo events, PartnerSession.Repo sessions,
-                                  OrderService orderService, PartnerChaos chaos, Trace trace) {
+    public PartnerAdminController(PartnerOrder.Repo orders, PartnerRefund.Repo refunds, PartnerUser.Repo users, PartnerSession.Repo sessions,
+                                  ProcessedEvent.Repo events, OrderService orderService, PartnerChaos chaos, Trace trace) {
         this.orders = orders;
-        this.events = events;
+        this.refunds = refunds;
+        this.users = users;
         this.sessions = sessions;
+        this.events = events;
         this.orderService = orderService;
         this.chaos = chaos;
         this.trace = trace;
@@ -40,37 +45,48 @@ public class PartnerAdminController {
         return orders.findAllByOrderByCreatedAtDesc().stream().map(OrderService::view).toList();
     }
 
-    @GetMapping("/statements")
-    public List<ProcessedEvent> statements() {
-        return events.findByTypeOrderByIdDesc("statement.daily");
+    @GetMapping("/users")
+    public List<PartnerUser> users() {
+        return users.findAllByOrderByCreatedAtDesc();
+    }
+
+    @GetMapping("/refunds")
+    public List<PartnerRefund> refunds() {
+        return refunds.findAllByOrderByCreatedAtDesc();
+    }
+
+    @GetMapping("/notifications")
+    public List<ProcessedEvent> notifications() {
+        return events.findAllByOrderByIdDesc();
     }
 
     @PostMapping("/orders/{orderId}/refund")
     public Map<String, Object> refund(@PathVariable String orderId, @RequestBody(required = false) JsonNode body) {
         PartnerOrder o = orders.findById(orderId).orElseThrow(() -> ApiException.notFound("Order " + orderId + " not found"));
-        return OrderService.view(orderService.refund(o, Json.money(body, "amount"), Json.str(body, "reason")));
+        return OrderService.view(orderService.refund(o, Json.money(body, "amount")));
     }
 
+    /** Clears orders, refunds, sessions, notifications and users (the portal reset clears exchange info too). */
     @PostMapping("/reset")
     public Map<String, Object> reset() {
         orders.deleteAll();
-        events.deleteAll();
+        refunds.deleteAll();
         sessions.deleteAll();
+        events.deleteAll();
+        users.deleteAll();
         trace.clear();
-        chaos.webhookFailCount = 0;
-        chaos.ignoreWebhooks = false;
+        chaos.reset();
         return Json.obj("ok", true);
     }
 
     @GetMapping("/chaos")
     public Map<String, Object> chaos() {
-        return Json.obj("webhookFailCount", chaos.webhookFailCount, "ignoreWebhooks", chaos.ignoreWebhooks);
+        return chaos.view();
     }
 
     @PutMapping("/chaos")
     public Map<String, Object> setChaos(@RequestBody JsonNode b) {
-        if (b.has("webhookFailCount")) chaos.webhookFailCount = Math.max(0, b.get("webhookFailCount").asInt());
-        if (b.has("ignoreWebhooks")) chaos.ignoreWebhooks = b.get("ignoreWebhooks").asBoolean();
-        return chaos();
+        chaos.apply(b);
+        return chaos.view();
     }
 }

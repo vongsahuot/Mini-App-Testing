@@ -332,3 +332,25 @@
   font-size: 22px;
   color: var(--c-gold);
 }
+.vip {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--c-gold);
+  background: linear-gradient(135deg, #3b2a08, #21141d);
+  color: var(--c-gold);
+  font-weight: 600;
+}
+.vip small {
+  color: var(--c-muted);
+  font-weight: 400;
+  font-size: 12px;
+}
+.order .actions {
+  flex-wrap: wrap;
+}

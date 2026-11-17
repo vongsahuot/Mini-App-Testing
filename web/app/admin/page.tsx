@@ -1,83 +1,166 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { api, BANK, errorText, isApiError, money, PARTNER, PORTAL } from "@/lib/api";
-import { ACTOR_LABEL, PHASES, STEPS, type Actor } from "@/lib/trace";
+import { api, BANK, errorText, isApiError, money, PARTNER, PORTAL, store } from "@/lib/api";
+import { ACTOR_LABEL, FLOW, SHARED_PHASES, stepKey, type Flow } from "@/lib/trace";
+import { Scenarios } from "./scenarios";
 import s from "./admin.module.css";
 
 type Svc = "portal" | "bank" | "partner";
 type Row = Record<string, unknown>;
+type Staff = "admin" | "ops";
 interface TraceEv {
   id: string | number;
   ts: string;
-  actor: Actor;
-  step: number;
+  actor: string;
+  step: string | null;
+  flow: Flow | null;
   title: string;
   detail: string | null;
   ref: string | null;
 }
-interface BankChaos {
-  dropResultCallback: boolean;
-  failDebit: boolean;
-  failRefund: boolean;
-  settlementMismatch: boolean;
-}
-interface PartnerChaos {
-  webhookFailCount: number;
-  ignoreWebhooks: boolean;
-}
+type TraceRow = TraceEv & { svc: Svc; t: number };
+type Chaos = Record<string, boolean | number>;
 
 const ENDPOINTS = {
   portalTrace: ["portal", `${PORTAL}/api/v1/admin/trace`],
-  bankTrace: ["bank", `${BANK}/api/v1/admin/trace`],
-  partnerTrace: ["partner", `${PARTNER}/api/v1/admin/trace`],
   payments: ["portal", `${PORTAL}/api/v1/admin/payments`],
   refunds: ["portal", `${PORTAL}/api/v1/admin/refunds`],
-  webhooks: ["portal", `${PORTAL}/api/v1/admin/webhooks`],
+  outbox: ["portal", `${PORTAL}/api/v1/admin/outbox`],
+  topics: ["portal", `${PORTAL}/api/v1/admin/topics`],
   reconciliations: ["portal", `${PORTAL}/api/v1/admin/reconciliations`],
-  orders: ["partner", `${PARTNER}/api/v1/admin/orders`],
+  opsItems: ["portal", `${PORTAL}/api/v1/admin/ops-items`],
+  audit: ["portal", `${PORTAL}/api/v1/admin/audit`],
+  miniApps: ["portal", `${PORTAL}/api/v1/admin/mini-apps`],
+  partners: ["portal", `${PORTAL}/api/v1/admin/partners`],
+  bankTrace: ["bank", `${BANK}/api/v1/admin/trace`],
   accounts: ["bank", `${BANK}/api/v1/admin/accounts`],
   transactions: ["bank", `${BANK}/api/v1/admin/transactions`],
+  holds: ["bank", `${BANK}/api/v1/admin/holds`],
+  customers: ["bank", `${BANK}/api/v1/admin/customers`],
+  bankNotifications: ["bank", `${BANK}/api/v1/admin/notifications`],
   bankChaos: ["bank", `${BANK}/api/v1/admin/chaos`],
+  partnerTrace: ["partner", `${PARTNER}/api/v1/admin/trace`],
+  orders: ["partner", `${PARTNER}/api/v1/admin/orders`],
+  partnerUsers: ["partner", `${PARTNER}/api/v1/admin/users`],
+  partnerRefunds: ["partner", `${PARTNER}/api/v1/admin/refunds`],
+  partnerNotifications: ["partner", `${PARTNER}/api/v1/admin/notifications`],
   partnerChaos: ["partner", `${PARTNER}/api/v1/admin/chaos`],
 } as const satisfies Record<string, readonly [Svc, string]>;
 type Key = keyof typeof ENDPOINTS;
 type Result = { ok: true; data: unknown } | { ok: false; error: string; offline: boolean };
 
 const SVC_LABEL: Record<Svc, string> = { portal: "Portal :8081", bank: "Bank :8082", partner: "Partner :8083" };
+const SVC_ORDER: Record<Svc, number> = { portal: 0, bank: 1, partner: 2 };
 const TABS = [
   "Trace",
   "Coverage",
   "Payments",
   "Refunds",
-  "Webhooks",
-  "Reconciliations",
-  "Partner orders",
+  "Notifications",
+  "Ops & audit",
+  "Partner",
   "Bank",
+  "Mini App Admin",
   "Actions",
   "Scenarios",
 ] as const;
 type Tab = (typeof TABS)[number];
 
-const GOOD = ["PAID", "DELIVERED", "REFUNDED", "SUCCESS", "COMPLETED", "MATCHED", "OK"];
-const BAD = ["FAILED", "GAVE_UP", "CANCELLED", "EXPIRED", "MISMATCH"];
+/** Lane groups, coloured as in the flow diagram. */
+const LANE_GROUP: Record<string, "device" | "partner" | "bank" | "core"> = {
+  U: "device",
+  APP: "device",
+  PC: "device",
+  SDK: "device",
+  PA: "device",
+  PS: "partner",
+  PG: "bank",
+  MBE: "bank",
+  MAS: "bank",
+  KF: "bank",
+  LG: "core",
+  CB: "core",
+};
+const laneGroup = (a: string) => LANE_GROUP[a] ?? "core";
+const actorTitle = (a: string) => (ACTOR_LABEL as Record<string, string>)[a] ?? a;
+const FLOW_NAME = Object.fromEntries(FLOW.types.map((t) => [t.id, t.name])) as Record<Flow, string>;
+
+/** Bank chaos switches, explained as in docs/CONTRACT.md ("Bank chaos"). */
+const BANK_CHAOS_HELP: Record<string, string> = {
+  initFail: "LG refuses the hold → 3:22a–22e (failed)",
+  initTimeout: "LG places the hold but answers too late → INITIATED, released by expiry (R7–R9)",
+  completeFail: "Core Banking refuses the debit → 3:38a–38f",
+  completeTimeout: "LG posts the debit but answers too late → 3:38g–38k, then recovery R1–R6c → SUCCESS",
+  completeLost: "LG answers too late without posting → 3:38g, then R1–R5b NOT_FOUND → void → FAILED",
+  lgDown: "Inquiry / void get no answer → R5 retry + ops alert after 60 s",
+  cancelFail: "Cancel init (hold release) fails → R9a, CANCEL_PENDING ops item",
+  refundFail: "Core Banking refuses refunds → 4:7 FAILED",
+  refundTimeout: "LG posts the refund but answers too late → REFUND_PENDING, then F1–F9 → REFUNDED",
+  refundLost: "LG answers too late without posting → REFUND_PENDING, then F1–F5b NOT_FOUND → void → FAILED",
+  settlementMismatch: "First settlement file entry's amount is off by 0.01 → 4:18 mismatch",
+};
+const PARTNER_CHAOS_HELP: Record<string, string> = {
+  registerFail: "User registration answers 500 → REGISTRATION_FAILED (2:19a–19c), retried on next open",
+  ignoreNotifications: "ACK payment notifications but do nothing → partner falls back to inquiry",
+  apiFail: "API-linkage operations answer 500 → cached catalog / PARTNER_UNAVAILABLE, breaker",
+  createOrderSlow: "First create-order call per idempotencyKey sleeps 6 s → bank retries once",
+  badChecksum: "Sign orders with a wrong key → BAD_CHECKSUM",
+};
+const SEED_IPS = "127.0.0.1/32, ::1/128, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16";
+
+const GOOD = ["SUCCESS", "DELIVERED", "REFUNDED", "ACK", "RESOLVED", "CAPTURED", "MATCHED", "DONE", "ACCEPTED", "OK", "CLOSED", "PUBLISHED"];
+const BAD = ["FAILED", "EXPIRED", "MISMATCH", "REFUSED", "VOIDED", "REJECTED", "LOCKED", "OPEN", "DLT", "CANCELLED"];
+const WARN = ["PROCESSING", "INITIATED", "HELD", "REQUESTED", "RETRY"];
 
 function statusPill(v: unknown) {
-  const t = String(v ?? "–");
-  const cls = GOOD.includes(t) ? "good" : BAD.includes(t) ? "bad" : t.includes("PENDING") || t === "PROCESSING" ? "warn" : "muted";
-  return <span className={`pill ${cls}`}>{t}</span>;
+  const t = v == null || v === "" ? "–" : String(v);
+  const cls = GOOD.includes(t)
+    ? "good"
+    : BAD.includes(t) || t.startsWith("NO_ACK")
+      ? "bad"
+      : t.includes("PENDING") || t.includes("PARTIAL") || WARN.includes(t)
+        ? "warn"
+        : "muted";
+  return (
+    <span className={`pill ${cls}`} title={t}>
+      {t.length > 40 ? `${t.slice(0, 40)}…` : t}
+    </span>
+  );
+}
+
+/** Epoch ms of an ISO timestamp, keeping sub-millisecond digits (Java sends up to nanoseconds). */
+function tsMs(v: string): number {
+  const m = /^(.*?)(?:\.(\d+))?(Z|[+-]\d\d:\d\d)?$/.exec(v);
+  if (!m) return NaN;
+  return Date.parse(m[1] + (m[3] ?? "Z")) + (m[2] ? Number(`0.${m[2]}`) * 1000 : 0);
 }
 const time = (v: unknown) => {
   if (typeof v !== "string" || !v) return "–";
-  const d = new Date(v);
-  return isNaN(d.getTime()) ? v : d.toLocaleTimeString();
+  const ms = tsMs(v);
+  if (isNaN(ms)) return v;
+  const d = new Date(ms);
+  return `${d.toLocaleTimeString([], { hour12: false })}.${String(d.getMilliseconds()).padStart(3, "0")}`;
 };
 const txt = (v: unknown): ReactNode =>
   v == null || v === "" ? "–" : typeof v === "object" ? <code>{JSON.stringify(v)}</code> : String(v);
+const num = (v: unknown) => (typeof v === "number" ? v : Number(v ?? 0) || 0);
 
 type Col = [label: string, render: string | ((r: Row) => ReactNode)];
 
-function Table({ rows, cols, empty = "Nothing yet." }: { rows: Row[]; cols: Col[]; empty?: string }) {
+function Table({
+  rows,
+  cols,
+  idKey,
+  empty = "Nothing yet.",
+  rowKind,
+}: {
+  rows: Row[];
+  cols: Col[];
+  idKey: string;
+  empty?: string;
+  rowKind?: (r: Row) => string | undefined;
+}) {
   if (!rows.length) return <div className={s.empty}>{empty}</div>;
   return (
     <div className={s.tableWrap}>
@@ -91,7 +174,7 @@ function Table({ rows, cols, empty = "Nothing yet." }: { rows: Row[]; cols: Col[
         </thead>
         <tbody>
           {rows.map((r, i) => (
-            <tr key={String(r.id ?? r.paymentId ?? r.orderId ?? r.txnId ?? r.accountNo ?? i)}>
+            <tr key={String(r[idKey] ?? i)} data-kind={rowKind?.(r)}>
               {cols.map(([l, f]) => (
                 <td key={l} data-label={l}>
                   {typeof f === "string" ? txt(r[f]) : f(r)}
@@ -105,16 +188,53 @@ function Table({ rows, cols, empty = "Nothing yet." }: { rows: Row[]; cols: Col[
   );
 }
 
+interface LogEntry {
+  ts: string;
+  text: string;
+  ok: boolean;
+}
+function ActionLog({ log }: { log: LogEntry[] }) {
+  if (log.length === 0) return <div className={s.empty}>No actions yet.</div>;
+  return (
+    <ul className={s.actionLog}>
+      {log.map((a, i) => (
+        <li key={i} data-ok={a.ok}>
+          <time>{a.ts}</time> {a.text}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export default function AdminPage() {
   const [results, setResults] = useState<Partial<Record<Key, Result>>>({});
   const [tab, setTab] = useState<Tab>("Trace");
   const [live, setLive] = useState(true);
+  const [staff, setStaffState] = useState<Staff>("admin");
   const [filter, setFilter] = useState("");
+  const [flowFilter, setFlowFilter] = useState<Flow | "all">("all");
+  const [withShared, setWithShared] = useState(false);
   const [newestFirst, setNewestFirst] = useState(false);
-  const [actionLog, setActionLog] = useState<{ ts: string; text: string; ok: boolean }[]>([]);
+  const [covType, setCovType] = useState<Flow>("webview");
+  const [onlyMissing, setOnlyMissing] = useState(false);
+  const [actionLog, setActionLog] = useState<LogEntry[]>([]);
+  const [staffError, setStaffError] = useState<string | null>(null);
   const [settlement, setSettlement] = useState<unknown>(null);
+  const [jobResult, setJobResult] = useState<{ label: string; data: unknown } | null>(null);
   const [failCountDraft, setFailCountDraft] = useState<string | null>(null);
+  const [ipDrafts, setIpDrafts] = useState<Record<string, string>>({});
+  const [opsNotes, setOpsNotes] = useState<Record<string, string>>({});
   const inFlight = useRef(false);
+
+  useEffect(() => {
+    const saved = store("local").get<Staff>("console.staff");
+    if (saved === "admin" || saved === "ops") setStaffState(saved);
+  }, []);
+  const setStaff = (v: Staff) => {
+    setStaffState(v);
+    setStaffError(null);
+    store("local").set("console.staff", v);
+  };
 
   const refresh = useCallback(async () => {
     if (inFlight.current) return;
@@ -158,47 +278,97 @@ export default function AdminPage() {
   };
 
   /** Shows "<service> offline" / error text for a section's endpoint, or null when fine. */
-  const problem = (k: Key) => {
-    const r = results[k];
-    if (!r || r.ok) return null;
-    const svc = ENDPOINTS[k][0];
-    return (
-      <div className={s.offline}>
-        {r.offline ? `${SVC_LABEL[svc]} offline` : `${SVC_LABEL[svc]}: ${r.error}`}
-      </div>
-    );
-  };
+  const problem = (...ks: Key[]) =>
+    ks.map((k) => {
+      const r = results[k];
+      if (!r || r.ok) return null;
+      const svc = ENDPOINTS[k][0];
+      return (
+        <div key={k} className={s.offline}>
+          {r.offline ? `${SVC_LABEL[svc]} offline` : `${SVC_LABEL[svc]} ${k}: ${r.error}`}
+        </div>
+      );
+    });
 
+  // ---------- trace ----------
   const traceAll = useMemo(() => {
-    const all: (TraceEv & { svc: Svc })[] = [];
+    const all: TraceRow[] = [];
     (["portalTrace", "bankTrace", "partnerTrace"] as const).forEach((k) =>
-      rows(k).forEach((e) => all.push({ ...(e as unknown as TraceEv), svc: ENDPOINTS[k][0] })),
+      rows(k).forEach((e) => {
+        const ev = e as unknown as TraceEv;
+        all.push({ ...ev, svc: ENDPOINTS[k][0], t: tsMs(String(ev.ts)) });
+      }),
     );
-    all.sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts) || Number(a.step) - Number(b.step));
+    all.sort((a, b) => a.t - b.t || SVC_ORDER[a.svc] - SVC_ORDER[b.svc] || Number(a.id) - Number(b.id));
     return all;
   }, [rows]);
 
-  const observed = useMemo(() => new Set(traceAll.map((e) => Number(e.step))), [traceAll]);
-
   const shownTrace = useMemo(() => {
     const f = filter.trim().toLowerCase();
-    const list = f ? traceAll.filter((e) => (e.ref ?? "").toLowerCase().includes(f)) : traceAll;
-    return newestFirst ? [...list].reverse() : list;
-  }, [traceAll, filter, newestFirst]);
+    const list = traceAll.filter(
+      (e) =>
+        (!f || (e.ref ?? "").toLowerCase().includes(f)) &&
+        (flowFilter === "all" || e.flow === flowFilter || (withShared && e.flow == null)),
+    );
+    return newestFirst ? list.reverse() : list;
+  }, [traceAll, filter, flowFilter, withShared, newestFirst]);
 
-  async function act(label: string, fn: () => Promise<unknown>) {
-    const ts = new Date().toLocaleTimeString();
+  // ---------- coverage ----------
+  /** step key → flows it was observed with ("-" = flow null). */
+  const seen = useMemo(() => {
+    const m = new Map<string, Set<string>>();
+    for (const e of traceAll) {
+      if (!e.step) continue;
+      let set = m.get(e.step);
+      if (!set) m.set(e.step, (set = new Set()));
+      set.add(e.flow ?? "-");
+    }
+    return m;
+  }, [traceAll]);
+  const isSeen = useCallback(
+    (t: Flow, key: string) => {
+      const x = seen.get(key);
+      return !!x && (x.has(t) || x.has("-"));
+    },
+    [seen],
+  );
+  const coverage = useMemo(() => {
+    const out = {} as Record<Flow, { ok: number; total: number }>;
+    for (const t of FLOW.types) {
+      let ok = 0;
+      let total = 0;
+      for (const k of FLOW.flows[t.id].phases) {
+        const p = FLOW.phases[k];
+        for (const st of p.steps) {
+          total++;
+          if (isSeen(t.id, stepKey(p.sec, st.n))) ok++;
+        }
+      }
+      out[t.id] = { ok, total };
+    }
+    return out;
+  }, [isSeen]);
+
+  // ---------- actions ----------
+  async function act(label: string, fn: () => Promise<unknown>, staffCall = false) {
+    const ts = new Date().toLocaleTimeString([], { hour12: false });
     try {
       const r = await fn();
-      setActionLog((l) => [{ ts, ok: true, text: `${label}: ${r == null ? "ok" : JSON.stringify(r)}` }, ...l].slice(0, 30));
+      setActionLog((l) => [{ ts, ok: true, text: `${label}: ${r == null ? "ok" : JSON.stringify(r)}` }, ...l].slice(0, 40));
+      if (staffCall) setStaffError(null);
       return r;
     } catch (e) {
-      setActionLog((l) => [{ ts, ok: false, text: `${label}: ${errorText(e)}` }, ...l].slice(0, 30));
+      const msg = `${label}: ${isApiError(e) && e.status ? `HTTP ${e.status} ` : ""}${errorText(e)}`;
+      setActionLog((l) => [{ ts, ok: false, text: msg }, ...l].slice(0, 40));
+      if (staffCall) setStaffError(msg);
       return undefined;
     } finally {
       void refresh();
     }
   }
+  /** Mutating Mini App Admin / ops call, sent as the "Signed in as" AD account. */
+  const staffCall = (label: string, url: string, method: string, body?: unknown) =>
+    act(`${label} (as ${staff})`, () => api(url, { method, body: body ?? {}, headers: { "X-Staff-User": staff } }), true);
 
   const clearTrace = () =>
     act("Clear trace", async () => {
@@ -209,23 +379,70 @@ export default function AdminPage() {
       return failed ? `${3 - failed}/3 cleared (${failed} offline/failed)` : "all cleared";
     });
 
-  const bankChaos = results.bankChaos?.ok ? (results.bankChaos.data as BankChaos) : null;
-  const partnerChaos = results.partnerChaos?.ok ? (results.partnerChaos.data as PartnerChaos) : null;
+  const resetAll = () => {
+    if (
+      !window.confirm(
+        "Reset all three services? Clears payments, refunds, Kafka topics, ops items, audit, orders, partner users, bank transactions, holds and notifications (balances back to seed), consents, chaos switches, Mini App / partner registry changes and all traces.",
+      )
+    )
+      return;
+    void act("Reset all", async () => {
+      const r = await Promise.allSettled(
+        [PORTAL, BANK, PARTNER].map((b) => api(`${b}/api/v1/admin/reset`, { method: "POST" })),
+      );
+      const failed = r.filter((x) => x.status === "rejected").length;
+      setIpDrafts({});
+      setFailCountDraft(null);
+      setSettlement(null);
+      setJobResult(null);
+      return failed ? `${3 - failed}/3 reset (${failed} offline/failed)` : "all three reset";
+    });
+  };
 
-  const tabCount: Partial<Record<Tab, number>> = {
+  const runJob = async (label: string, url: string, body?: unknown) => {
+    const r = await act(label, () => api(url, { method: "POST", body }));
+    if (r !== undefined) setJobResult({ label, data: r });
+  };
+
+  const bankChaos = results.bankChaos?.ok ? (results.bankChaos.data as Chaos) : null;
+  const partnerChaos = results.partnerChaos?.ok ? (results.partnerChaos.data as Chaos) : null;
+
+  const showRef = (ref: unknown) => {
+    if (typeof ref !== "string" || !ref) return "–";
+    return (
+      <button
+        className={s.ref}
+        title="Show this ref in the trace"
+        onClick={() => {
+          setFilter(ref);
+          setTab("Trace");
+        }}
+      >
+        {ref}
+      </button>
+    );
+  };
+
+  const openOps = rows("opsItems").filter((r) => r.status === "OPEN").length;
+  const topicKind = (topic: unknown) => {
+    const t = String(topic ?? "");
+    return t.endsWith("-dlt") ? "dlt" : t.includes("-retry-") ? "retry" : undefined;
+  };
+  const tabCount: Partial<Record<Tab, ReactNode>> = {
     Trace: traceAll.length,
+    Coverage: `${coverage[covType].ok}/${coverage[covType].total}`,
     Payments: rows("payments").length,
     Refunds: rows("refunds").length,
-    Webhooks: rows("webhooks").length,
-    Reconciliations: rows("reconciliations").length,
-    "Partner orders": rows("orders").length,
+    Notifications: rows("topics").length,
+    "Ops & audit": openOps ? <span className={s.alertCount}>{openOps} open</span> : undefined,
+    Partner: rows("orders").length,
   };
 
   return (
     <main className="wrap">
       <header className={s.header}>
         <div>
-          <div className="eyebrow">Test console · polls every 2 s</div>
+          <div className="eyebrow">Test console · 4 integration types · polls every 2 s</div>
           <h1>Mini App Payment Flow</h1>
         </div>
         <div className={s.status}>
@@ -240,6 +457,13 @@ export default function AdminPage() {
           <label className={s.check}>
             <input type="checkbox" checked={live} onChange={(e) => setLive(e.target.checked)} /> Live
           </label>
+          <label className={s.check} title="X-Staff-User sent with Mini App Admin and ops calls (mock Active Directory)">
+            Signed in as
+            <select className={s.select} value={staff} onChange={(e) => setStaff(e.target.value as Staff)}>
+              <option value="admin">admin</option>
+              <option value="ops">ops</option>
+            </select>
+          </label>
         </div>
       </header>
 
@@ -247,7 +471,7 @@ export default function AdminPage() {
         {TABS.map((t) => (
           <button key={t} aria-pressed={tab === t} onClick={() => setTab(t)}>
             {t}
-            {t === "Coverage" ? <b>{observed.size}/62</b> : tabCount[t] ? <b>{tabCount[t]}</b> : null}
+            {tabCount[t] ? <b>{tabCount[t]}</b> : null}
           </button>
         ))}
       </nav>
@@ -257,35 +481,70 @@ export default function AdminPage() {
           <div className={s.toolbar}>
             <input
               className="input"
-              placeholder="Filter by ref (paymentId, orderId, appId…)"
+              placeholder="Filter by ref (paymentRef, orderId, refundId, appId…)"
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
             />
+            {filter && (
+              <button className="btn" onClick={() => setFilter("")}>
+                ✕
+              </button>
+            )}
+            <select
+              className={s.select}
+              value={flowFilter}
+              onChange={(e) => setFlowFilter(e.target.value as Flow | "all")}
+              aria-label="Flow"
+            >
+              <option value="all">All flows</option>
+              {FLOW.types.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.id} · {t.name}
+                </option>
+              ))}
+            </select>
+            {flowFilter !== "all" && (
+              <label className={s.check} title="Also show events with flow = null (shared phases, notes)">
+                <input type="checkbox" checked={withShared} onChange={(e) => setWithShared(e.target.checked)} /> + shared
+              </label>
+            )}
             <label className={s.check}>
-              <input type="checkbox" checked={newestFirst} onChange={(e) => setNewestFirst(e.target.checked)} />{" "}
-              Newest first
+              <input type="checkbox" checked={newestFirst} onChange={(e) => setNewestFirst(e.target.checked)} /> Newest
+              first
             </label>
             <button className="btn danger" onClick={clearTrace}>
               Clear all
             </button>
           </div>
-          {problem("portalTrace")}
-          {problem("bankTrace")}
-          {problem("partnerTrace")}
+          {problem("portalTrace", "bankTrace", "partnerTrace")}
+          <div className={s.hint}>
+            {shownTrace.length} of {traceAll.length} events
+          </div>
           {shownTrace.length === 0 ? (
-            <div className={s.empty}>No events{filter ? " match this ref" : " yet"}.</div>
+            <div className={s.empty}>No events{filter || flowFilter !== "all" ? " match these filters" : " yet"}.</div>
           ) : (
             <ol className={s.trace}>
               {shownTrace.map((e) => (
-                <li key={`${e.svc}-${e.id}`} className={s.lane} data-actor={e.actor}>
-                  <span className={s.stepBadge} title={e.step ? undefined : "Un-numbered note (retry, chaos, rejection)"}>
+                <li key={`${e.svc}-${e.id}`} className={s.lane} data-group={laneGroup(e.actor)}>
+                  <span
+                    className={s.stepBadge}
+                    data-note={!e.step}
+                    title={e.step ? `Step ${e.step}` : "Un-numbered note (retry, chaos, rejection)"}
+                  >
                     {e.step || "·"}
                   </span>
-                  <span className={s.actor} title={ACTOR_LABEL[e.actor] ?? e.actor}>
+                  <span className={s.actor} title={actorTitle(e.actor)}>
                     {e.actor}
                   </span>
                   <div className={s.traceBody}>
-                    <strong>{e.title}</strong>
+                    <strong>
+                      {e.flow && (
+                        <span className={s.flowChip} data-flow={e.flow} title={FLOW_NAME[e.flow]}>
+                          {e.flow}
+                        </span>
+                      )}
+                      {e.title}
+                    </strong>
                     {e.detail && <span>{e.detail}</span>}
                   </div>
                   <div className={s.traceMeta}>
@@ -305,40 +564,103 @@ export default function AdminPage() {
 
       {tab === "Coverage" && (
         <section className="panel">
-          <div className={s.coverageHead}>
-            <strong>
-              {observed.size} / 62 steps observed
-            </strong>
-            <div className={s.bar}>
-              <div style={{ width: `${(observed.size / 62) * 100}%` }} />
-            </div>
-          </div>
-          <div className={s.phases}>
-            {PHASES.map((p) => {
-              const steps = STEPS.filter((x) => x.phase.n === p.n);
-              const seen = steps.filter((x) => observed.has(x.n)).length;
+          {problem("portalTrace", "bankTrace", "partnerTrace")}
+          <div className={s.typeSelect} role="group" aria-label="Integration type">
+            {FLOW.types.map((t) => {
+              const c = coverage[t.id];
               return (
-                <div key={p.n} className={s.phase}>
-                  <h3>
-                    <span>Phase {p.n}</span> {p.name}
-                    <em>
-                      {seen}/{steps.length}
-                    </em>
-                  </h3>
-                  <ul>
-                    {steps.map((x) => (
-                      <li key={x.n} className={s.lane} data-seen={observed.has(x.n)} data-actor={x.actor}>
-                        <span className={s.tick}>{observed.has(x.n) ? "✓" : ""}</span>
-                        <b>{x.n}</b>
-                        <span className={s.actor}>{x.actor}</span>
-                        <span>{x.title}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+                <button key={t.id} aria-pressed={covType === t.id} onClick={() => setCovType(t.id)}>
+                  <strong>{t.name}</strong>
+                  <span>
+                    {c.ok}/{c.total}
+                  </span>
+                  <div className={s.bar}>
+                    <div style={{ width: `${c.total ? (c.ok / c.total) * 100 : 0}%` }} />
+                  </div>
+                </button>
               );
             })}
           </div>
+          <div className={s.coverageHead}>
+            <div className={s.coverageTitle}>
+              <strong>
+                {FLOW_NAME[covType]}: {coverage[covType].ok} / {coverage[covType].total} steps observed
+              </strong>
+              <label className={s.check}>
+                <input type="checkbox" checked={onlyMissing} onChange={(e) => setOnlyMissing(e.target.checked)} /> Only
+                missing steps
+              </label>
+            </div>
+            <div className={s.bar}>
+              <div style={{ width: `${(coverage[covType].ok / Math.max(1, coverage[covType].total)) * 100}%` }} />
+            </div>
+            <small className={s.hint}>
+              A step counts for {covType} when an event has its key and flow {covType} or no flow (shared steps).
+              Clear the trace before a run to measure one type at a time.
+            </small>
+          </div>
+          {FLOW.flows[covType].sections.map((sec) => {
+            const phases = FLOW.flows[covType].phases.filter((k) => FLOW.phases[k].sec === sec.n);
+            if (!phases.length) return null;
+            return (
+              <div key={sec.n} className={s.covSection}>
+                <h2>
+                  {sec.n}. {sec.title}
+                </h2>
+                <div className={s.phases}>
+                  {phases.map((k) => {
+                    const p = FLOW.phases[k];
+                    const steps = p.steps.map((st) => {
+                      const key = stepKey(p.sec, st.n);
+                      return { st, key, ok: isSeen(covType, key) };
+                    });
+                    const done = steps.filter((x) => x.ok).length;
+                    const shown = onlyMissing ? steps.filter((x) => !x.ok) : steps;
+                    const shared = SHARED_PHASES.has(k);
+                    return (
+                      <div key={k} className={s.phase} data-complete={done === steps.length}>
+                        <h3>
+                          <span data-shared={shared}>{shared ? "Same in all types" : "Specific"}</span>
+                          {p.title}
+                          <em>
+                            {done}/{steps.length}
+                          </em>
+                        </h3>
+                        {shown.length === 0 ? (
+                          <div className={s.hint}>All steps observed.</div>
+                        ) : (
+                          <ul>
+                            {shown.map(({ st, key, ok }) => (
+                              <li
+                                key={key}
+                                className={s.lane}
+                                data-group={laneGroup(st.actor)}
+                                data-seen={ok}
+                                data-note={!!st.note}
+                                title={
+                                  st.from && st.to
+                                    ? `${key}: ${actorTitle(st.from)} → ${actorTitle(st.to)}${st.reply ? " (reply)" : ""}`
+                                    : `${key}: note on ${actorTitle(st.actor)}`
+                                }
+                              >
+                                <span className={s.tick}>{ok ? "✓" : ""}</span>
+                                <b>{st.n}</b>
+                                <span className={s.actor}>{st.actor}</span>
+                                <span className={s.stepLabel}>
+                                  {st.reply ? "↩ " : ""}
+                                  {st.label}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
         </section>
       )}
 
@@ -347,15 +669,20 @@ export default function AdminPage() {
           {problem("payments")}
           <Table
             rows={rows("payments")}
+            idKey="paymentRef"
             cols={[
-              ["Payment", (r) => <code>{txt(r.paymentId)}</code>],
+              ["Payment", (r) => showRef(r.paymentRef)],
+              ["App", (r) => <code>{txt(r.appId)}</code>],
+              ["Type", (r) => <span className={s.flowChip} data-flow={String(r.type)}>{txt(r.type)}</span>],
               ["Order", (r) => <code>{txt(r.orderId)}</code>],
               ["Amount", (r) => money(r.amount, r.currency)],
               ["Status", (r) => statusPill(r.status)],
+              ["Fail reason", "failReason"],
               ["Bank txn", (r) => <code>{txt(r.bankTxnId)}</code>],
-              ["Refunded", (r) => (r.refundedAmount ? money(r.refundedAmount, r.currency) : "–")],
-              ["Created", (r) => time(r.createdAt)],
+              ["Refunded", (r) => (num(r.refundedAmount) ? money(r.refundedAmount, r.currency) : "–")],
+              ["Cancel", (r) => (r.cancelStatus ? statusPill(r.cancelStatus) : "–")],
               ["Expires", (r) => time(r.expiresAt)],
+              ["Created", (r) => time(r.createdAt)],
             ]}
           />
         </section>
@@ -366,87 +693,291 @@ export default function AdminPage() {
           {problem("refunds")}
           <Table
             rows={rows("refunds")}
+            idKey="refundId"
             cols={[
-              ["Refund", (r) => <code>{txt(r.refundId)}</code>],
-              ["Payment", (r) => <code>{txt(r.paymentId)}</code>],
+              ["Refund", (r) => showRef(r.refundId)],
+              ["Payment", (r) => showRef(r.paymentRef)],
               ["Amount", (r) => money(r.amount, r.currency)],
               ["Status", (r) => statusPill(r.status)],
               ["Refund txn", (r) => <code>{txt(r.refundTxnId)}</code>],
               ["Reason", "reason"],
-            ]}
-          />
-        </section>
-      )}
-
-      {tab === "Webhooks" && (
-        <section className="panel">
-          {problem("webhooks")}
-          <Table
-            rows={rows("webhooks")}
-            cols={[
-              ["Type", (r) => <code>{txt(r.type)}</code>],
-              ["Payment", (r) => <code>{txt(r.paymentId)}</code>],
-              ["Status", (r) => statusPill(r.status)],
-              ["Attempts", "attempts"],
-              ["Last HTTP", "lastStatusCode"],
-              ["Next attempt", (r) => time(r.nextAttemptAt)],
+              ["Alerted", (r) => (r.alerted ? statusPill("ALERTED") : "–")],
+              ["Created", (r) => time(r.createdAt)],
               ["Updated", (r) => time(r.updatedAt)],
-              ["Event", (r) => <code>{txt(r.eventId)}</code>],
             ]}
           />
         </section>
       )}
 
-      {tab === "Reconciliations" && (
-        <section className="panel">
-          {problem("reconciliations")}
-          <Table
-            rows={rows("reconciliations")}
-            cols={[
-              ["Date", "date"],
-              ["Result", (r) => (r.matched ? statusPill("MATCHED") : statusPill("MISMATCH"))],
-              [
-                "Mismatches",
-                (r) =>
-                  Array.isArray(r.mismatches) && r.mismatches.length ? (
-                    <ul className={s.mismatches}>
-                      {r.mismatches.map((m, i) => (
-                        <li key={i}>{String(m)}</li>
-                      ))}
-                    </ul>
-                  ) : (
-                    "–"
+      {tab === "Notifications" && (
+        <div className={s.stack}>
+          <section className="panel">
+            <h2>Kafka topics · payment-notification, retry-1|2|3 (5 s / 10 s / 20 s), dlt</h2>
+            {problem("topics")}
+            <div className={s.legend}>
+              {(() => {
+                const t = rows("topics");
+                const main = t.filter((r) => !topicKind(r.topic)).length;
+                const retry = t.filter((r) => topicKind(r.topic) === "retry").length;
+                const dlt = t.filter((r) => topicKind(r.topic) === "dlt").length;
+                const waiting = t.filter((r) => !r.consumedAt).length;
+                return (
+                  <>
+                    <span className="pill muted">main {main}</span>
+                    <span className="pill warn">retry {retry}</span>
+                    <span className={`pill ${dlt ? "bad" : "muted"}`}>dead-letter {dlt}</span>
+                    <span className="pill muted">not consumed yet {waiting}</span>
+                  </>
+                );
+              })()}
+            </div>
+            <Table
+              rows={rows("topics")}
+              idKey="id"
+              rowKind={(r) => topicKind(r.topic)}
+              cols={[
+                ["#", "id"],
+                [
+                  "Topic",
+                  (r) => (
+                    <span className={s.topic} data-kind={topicKind(r.topic) ?? "main"}>
+                      {txt(r.topic)}
+                    </span>
                   ),
-              ],
-              ["Created", (r) => time(r.createdAt)],
-            ]}
-          />
-        </section>
+                ],
+                ["Attempt", "attempt"],
+                ["Event", (r) => <code>{txt(r.eventId)}</code>],
+                ["Payment", (r) => showRef(r.paymentRef)],
+                ["Available", (r) => time(r.availableAt)],
+                ["Consumed", (r) => (r.consumedAt ? time(r.consumedAt) : statusPill("WAITING"))],
+                ["Result", (r) => (r.result ? statusPill(r.result) : "–")],
+                ["HTTP", "lastStatusCode"],
+              ]}
+            />
+          </section>
+          <section className="panel">
+            <h2>Outbox (written with the final payment status, relayed every 0.5 s)</h2>
+            {problem("outbox")}
+            <Table
+              rows={rows("outbox")}
+              idKey="id"
+              cols={[
+                ["#", "id"],
+                ["Event", (r) => <code>{txt(r.eventId)}</code>],
+                ["Payment", (r) => showRef(r.paymentRef)],
+                ["Status", (r) => statusPill(r.status)],
+                ["Publish step", (r) => <code>{txt(r.publishStep)}</code>],
+                ["Published", (r) => (r.publishedAt ? time(r.publishedAt) : statusPill("PENDING"))],
+                ["Created", (r) => time(r.createdAt)],
+              ]}
+            />
+          </section>
+        </div>
       )}
 
-      {tab === "Partner orders" && (
-        <section className="panel">
-          {problem("orders")}
-          <Table
-            rows={rows("orders")}
-            cols={[
-              ["Order", (r) => <code>{txt(r.orderId)}</code>],
-              ["Item", (r) => `${txt(r.title)}`],
-              ["Amount", (r) => money(r.amount, r.currency)],
-              ["Status", (r) => statusPill(r.status)],
-              ["Payment", (r) => <code>{txt(r.paymentId)}</code>],
-              ["Refunded", (r) => (r.refundedAmount ? money(r.refundedAmount, r.currency) : "–")],
-              [
-                "Ticket",
-                (r) => {
-                  const t = r.ticket as { code?: string; seat?: string } | null;
-                  return t ? `${t.code} · ${t.seat}` : "–";
-                },
-              ],
-              ["Created", (r) => time(r.createdAt)],
-            ]}
-          />
-        </section>
+      {tab === "Ops & audit" && (
+        <div className={s.stack}>
+          <section className="panel">
+            <h2>Ops items · resolve as {staff}</h2>
+            {problem("opsItems")}
+            {staffError && <div className={s.offline}>{staffError}</div>}
+            <Table
+              rows={rows("opsItems")}
+              idKey="id"
+              empty="No ops alerts."
+              rowKind={(r) => (r.status === "OPEN" ? "open" : undefined)}
+              cols={[
+                ["#", "id"],
+                ["Kind", (r) => <code>{txt(r.kind)}</code>],
+                ["Ref", (r) => showRef(r.ref)],
+                ["Message", "message"],
+                ["Status", (r) => statusPill(r.status)],
+                ["Created", (r) => time(r.createdAt)],
+                [
+                  "Resolution",
+                  (r) => {
+                    const id = String(r.id);
+                    if (r.status !== "OPEN")
+                      return (
+                        <span>
+                          {txt(r.resolvedBy)} · {time(r.resolvedAt)}
+                          {r.resolution ? ` · ${String(r.resolution)}` : ""}
+                        </span>
+                      );
+                    return (
+                      <div className={s.inline}>
+                        <input
+                          className="input"
+                          placeholder="Note"
+                          value={opsNotes[id] ?? ""}
+                          onChange={(e) => setOpsNotes((n) => ({ ...n, [id]: e.target.value }))}
+                        />
+                        <button
+                          className="btn"
+                          onClick={() =>
+                            staffCall(`Resolve ops item ${id}`, `${PORTAL}/api/v1/admin/ops-items/${id}/resolve`, "POST", {
+                              note: opsNotes[id] || null,
+                            })
+                          }
+                        >
+                          Resolve
+                        </button>
+                      </div>
+                    );
+                  },
+                ],
+              ]}
+            />
+          </section>
+          <section className="panel">
+            <h2>Reconciliation reports</h2>
+            {problem("reconciliations")}
+            <Table
+              rows={rows("reconciliations")}
+              idKey="id"
+              empty="No settlement run yet (Actions → Run daily settlement)."
+              cols={[
+                ["Date", "date"],
+                [
+                  "Result",
+                  (r) =>
+                    statusPill(Array.isArray(r.mismatches) && r.mismatches.length ? "MISMATCH" : "MATCHED"),
+                ],
+                ["Entries", "entries"],
+                ["Matched", "matched"],
+                ["Fixed", "fixed"],
+                [
+                  "Mismatches",
+                  (r) =>
+                    Array.isArray(r.mismatches) && r.mismatches.length ? (
+                      <ul className={s.mismatches}>
+                        {r.mismatches.map((m, i) => (
+                          <li key={i}>{String(m)}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      "–"
+                    ),
+                ],
+                ["Created", (r) => time(r.createdAt)],
+              ]}
+            />
+          </section>
+          <section className="panel">
+            <h2>Audit log</h2>
+            {problem("audit")}
+            <Table
+              rows={rows("audit")}
+              idKey="id"
+              cols={[
+                ["At", (r) => time(r.at)],
+                ["Actor", (r) => <code>{txt(r.actor)}</code>],
+                ["Action", (r) => <code>{txt(r.action)}</code>],
+                ["Ref", (r) => showRef(r.ref)],
+                ["Detail", "detail"],
+              ]}
+            />
+          </section>
+        </div>
+      )}
+
+      {tab === "Partner" && (
+        <div className={s.stack}>
+          <section className="panel">
+            <h2>Partner orders</h2>
+            {problem("orders")}
+            <Table
+              rows={rows("orders")}
+              idKey="orderId"
+              cols={[
+                ["Order", (r) => showRef(r.orderId)],
+                ["App", (r) => <code>{txt(r.appId)}</code>],
+                ["Item", (r) => `${txt(r.title)}`],
+                ["Amount", (r) => money(r.amount, r.currency)],
+                ["Status", (r) => statusPill(r.status)],
+                ["Payment", (r) => showRef(r.paymentRef)],
+                ["Refunded", (r) => (num(r.refundedAmount) ? money(r.refundedAmount, r.currency) : "–")],
+                [
+                  "Ticket",
+                  (r) => {
+                    const t = r.ticket as { code?: string; seat?: string } | null;
+                    return t ? `${t.code} · ${t.seat}` : "–";
+                  },
+                ],
+                ["Created", (r) => time(r.createdAt)],
+                [
+                  "Refund",
+                  (r) => {
+                    const left = num(r.amount) - num(r.refundedAmount);
+                    if (!(r.status === "DELIVERED" || r.status === "PARTIALLY_REFUNDED") || left <= 0) return "–";
+                    const id = String(r.orderId);
+                    const url = `${PARTNER}/api/v1/admin/orders/${id}/refund`;
+                    return (
+                      <div className={s.inline}>
+                        {left > 1 && (
+                          <button className="btn" onClick={() => act(`Refund 1.00 of ${id}`, () => api(url, { body: { amount: 1 } }))}>
+                            1.00
+                          </button>
+                        )}
+                        <button className="btn" onClick={() => act(`Refund rest of ${id}`, () => api(url, { body: {} }))}>
+                          Rest
+                        </button>
+                      </div>
+                    );
+                  },
+                ],
+              ]}
+            />
+          </section>
+          <section className="panel">
+            <h2>Partner refunds</h2>
+            {problem("partnerRefunds")}
+            <Table
+              rows={rows("partnerRefunds")}
+              idKey="refundId"
+              cols={[
+                ["Refund", (r) => showRef(r.refundId)],
+                ["Order", (r) => showRef(r.orderId)],
+                ["Payment", (r) => showRef(r.paymentRef)],
+                ["Amount", (r) => money(r.amount, r.currency)],
+                ["Status", (r) => statusPill(r.status)],
+                ["Created", (r) => time(r.createdAt)],
+                ["Updated", (r) => time(r.updatedAt)],
+              ]}
+            />
+          </section>
+          <section className="panel">
+            <h2>Received payment notifications</h2>
+            {problem("partnerNotifications")}
+            <Table
+              rows={rows("partnerNotifications")}
+              idKey="id"
+              cols={[
+                ["#", "id"],
+                ["Event", (r) => <code>{txt(r.eventId)}</code>],
+                ["Payment", (r) => showRef(r.paymentRef)],
+                ["Status", (r) => statusPill(r.status)],
+                ["Received", (r) => time(r.receivedAt)],
+              ]}
+            />
+          </section>
+          <section className="panel">
+            <h2>Partner users</h2>
+            {problem("partnerUsers")}
+            <Table
+              rows={rows("partnerUsers")}
+              idKey="partnerUserId"
+              cols={[
+                ["Partner user", (r) => <code>{txt(r.partnerUserId)}</code>],
+                ["App", (r) => <code>{txt(r.appId)}</code>],
+                ["Bank user ref", (r) => <code>{txt(r.bankUserRef)}</code>],
+                ["Name", "name"],
+                ["Phone", "phone"],
+                ["Created", (r) => time(r.createdAt)],
+              ]}
+            />
+          </section>
+        </div>
       )}
 
       {tab === "Bank" && (
@@ -456,11 +987,66 @@ export default function AdminPage() {
             {problem("accounts")}
             <Table
               rows={rows("accounts")}
+              idKey="accountNo"
               cols={[
                 ["Account", (r) => <code>{txt(r.accountNo)}</code>],
                 ["Name", "name"],
                 ["Customer", "customerId"],
                 ["Balance", (r) => <strong>{money(r.balance, r.currency)}</strong>],
+                ["Held", (r) => (num(r.held) ? money(r.held, r.currency) : "–")],
+                ["Available", (r) => money(r.available, r.currency)],
+              ]}
+            />
+          </section>
+          <section className="panel">
+            <h2>Customers</h2>
+            {problem("customers")}
+            <Table
+              rows={rows("customers")}
+              idKey="customerId"
+              cols={[
+                ["Customer", (r) => <code>{txt(r.customerId)}</code>],
+                ["Username", "username"],
+                ["Name", "name"],
+                ["Segment", "segment"],
+                ["Wrong PIN/OTP", "authFailures"],
+                [
+                  "Payment auth",
+                  (r) =>
+                    r.authLocked ? (
+                      <>
+                        {statusPill("LOCKED")}{" "}
+                        <button
+                          className="btn"
+                          onClick={() =>
+                            act(`Unlock ${String(r.customerId)}`, () =>
+                              api(`${BANK}/api/v1/admin/customers/${encodeURIComponent(String(r.customerId))}/unlock`, { method: "POST" }),
+                            )
+                          }
+                        >
+                          Unlock
+                        </button>
+                      </>
+                    ) : (
+                      statusPill("OK")
+                    ),
+                ],
+              ]}
+            />
+          </section>
+          <section className="panel">
+            <h2>Holds</h2>
+            {problem("holds")}
+            <Table
+              rows={rows("holds")}
+              idKey="paymentRef"
+              cols={[
+                ["Payment", (r) => showRef(r.paymentRef)],
+                ["Account", (r) => <code>{txt(r.accountNo)}</code>],
+                ["Amount", (r) => money(r.amount, r.currency)],
+                ["Status", (r) => statusPill(r.status)],
+                ["Created", (r) => time(r.createdAt)],
+                ["Updated", (r) => time(r.updatedAt)],
               ]}
             />
           </section>
@@ -468,18 +1054,244 @@ export default function AdminPage() {
             <h2>Transactions</h2>
             {problem("transactions")}
             <Table
-              rows={[...rows("transactions")].reverse()}
+              rows={rows("transactions")}
+              idKey="txnId"
               cols={[
                 ["Txn", (r) => <code>{txt(r.txnId)}</code>],
                 ["Type", "type"],
-                ["Payment / refund", (r) => <code>{txt(r.refundId ?? r.paymentId)}</code>],
+                ["Payment", (r) => showRef(r.paymentRef)],
+                ["Refund", (r) => (r.refundId ? showRef(r.refundId) : "–")],
                 ["Debit", (r) => <code>{txt(r.debitAccount)}</code>],
                 ["Credit", (r) => <code>{txt(r.creditAccount)}</code>],
                 ["Amount", (r) => money(r.amount, r.currency)],
                 ["Status", (r) => statusPill(r.status)],
+                ["Reason", "reason"],
                 ["At", (r) => time(r.createdAt)],
               ]}
             />
+          </section>
+          <section className="panel">
+            <h2>Push notifications (C10; OTP codes arrive here)</h2>
+            {problem("bankNotifications")}
+            <Table
+              rows={rows("bankNotifications")}
+              idKey="id"
+              rowKind={(r) => (r.kind === "OTP" ? "otp" : undefined)}
+              cols={[
+                ["#", "id"],
+                ["Customer", "customerId"],
+                ["Kind", (r) => <code>{txt(r.kind)}</code>],
+                ["Title", "title"],
+                ["Body", "body"],
+                ["Ref", (r) => showRef(r.ref)],
+                ["At", (r) => time(r.createdAt)],
+              ]}
+            />
+          </section>
+        </div>
+      )}
+
+      {tab === "Mini App Admin" && (
+        <div className={s.stack}>
+          <div className={s.hint}>
+            Mutating calls send <code>X-Staff-User: {staff}</code> (configuration needs <code>admin</code>) and are written
+            to the audit log.
+          </div>
+          {staffError && <div className={s.offline}>{staffError}</div>}
+          <section className="panel">
+            <h2>Mini Apps</h2>
+            {problem("miniApps")}
+            <Table
+              rows={rows("miniApps")}
+              idKey="appId"
+              cols={[
+                [
+                  "App",
+                  (r) => (
+                    <span>
+                      {txt(r.icon)} {txt(r.name)} <code>{txt(r.appId)}</code>
+                    </span>
+                  ),
+                ],
+                ["Type", (r) => <span className={s.flowChip} data-flow={String(r.type)}>{txt(r.type)}</span>],
+                [
+                  "Enabled",
+                  (r) => (
+                    <label className={s.check}>
+                      <input
+                        type="checkbox"
+                        checked={!!r.enabled}
+                        onChange={(e) =>
+                          staffCall(`${String(r.appId)} enabled=${e.target.checked}`, `${PORTAL}/api/v1/admin/mini-apps/${String(r.appId)}`, "PUT", {
+                            enabled: e.target.checked,
+                          })
+                        }
+                      />
+                      {r.enabled ? "on" : "off"}
+                    </label>
+                  ),
+                ],
+                [
+                  "SDK kill switch",
+                  (r) =>
+                    r.type === "sdk" ? (
+                      <label className={s.check} title="sdkEnabled: off = MB App must not start the SDK">
+                        <input
+                          type="checkbox"
+                          checked={!!r.sdkEnabled}
+                          onChange={(e) =>
+                            staffCall(
+                              `${String(r.appId)} sdkEnabled=${e.target.checked}`,
+                              `${PORTAL}/api/v1/admin/mini-apps/${String(r.appId)}`,
+                              "PUT",
+                              { sdkEnabled: e.target.checked },
+                            )
+                          }
+                        />
+                        SDK enabled
+                      </label>
+                    ) : (
+                      "–"
+                    ),
+                ],
+                [
+                  "Consent",
+                  (r) => (
+                    <div className={s.inline}>
+                      <code>v{txt(r.consentVersion)}</code>
+                      <button
+                        className="btn"
+                        onClick={() =>
+                          staffCall(
+                            `Bump consent version of ${String(r.appId)}`,
+                            `${PORTAL}/api/v1/admin/mini-apps/${String(r.appId)}/consent-version`,
+                            "POST",
+                          )
+                        }
+                      >
+                        Bump consent version
+                      </button>
+                    </div>
+                  ),
+                ],
+                ["Scopes", "scopes"],
+                [
+                  "Rules",
+                  (r) =>
+                    [r.segments ? `segments ${String(r.segments)}` : "", r.minAppVersion ? `app ≥ ${String(r.minAppVersion)}` : ""]
+                      .filter(Boolean)
+                      .join(" · ") || "–",
+                ],
+                [
+                  "Launch",
+                  (r) => (
+                    <code className={s.small}>
+                      {r.type === "webview"
+                        ? txt(r.entryUrl)
+                        : r.type === "sdk"
+                          ? `${String(r.sdkModule)} ≥ ${String(r.minSdkVersion)}`
+                          : r.type === "a2a"
+                            ? txt(r.appLink)
+                            : "native screens"}
+                    </code>
+                  ),
+                ],
+              ]}
+            />
+          </section>
+          <section className="panel">
+            <h2>Partner registry</h2>
+            {problem("partners")}
+            <Table
+              rows={rows("partners")}
+              idKey="clientId"
+              cols={[
+                [
+                  "Partner",
+                  (r) => (
+                    <span>
+                      {txt(r.name)} <code>{txt(r.clientId)}</code>
+                    </span>
+                  ),
+                ],
+                [
+                  "Allowed IPs (comma list)",
+                  (r) => {
+                    const id = String(r.clientId);
+                    const current = Array.isArray(r.allowedIps) ? r.allowedIps.map(String).join(", ") : String(r.allowedIps ?? "");
+                    const draft = ipDrafts[id] ?? current;
+                    const save = (value: string) =>
+                      staffCall(`Partner ${id} allowedIps`, `${PORTAL}/api/v1/admin/partners/${id}`, "PUT", {
+                        allowedIps: value
+                          .split(",")
+                          .map((x) => x.trim())
+                          .filter(Boolean),
+                      }).then((res) => {
+                        if (res !== undefined)
+                          setIpDrafts((d) => {
+                            const n = { ...d };
+                            delete n[id];
+                            return n;
+                          });
+                      });
+                    return (
+                      <div className={s.ipEdit}>
+                        <input
+                          className="input"
+                          value={draft}
+                          onChange={(e) => setIpDrafts((d) => ({ ...d, [id]: e.target.value }))}
+                        />
+                        <div className={s.inline}>
+                          <button className="btn" disabled={draft === current} onClick={() => void save(draft)}>
+                            Save
+                          </button>
+                          <button className="btn" disabled={current === SEED_IPS} onClick={() => void save(SEED_IPS)}>
+                            Restore seed
+                          </button>
+                          <button
+                            className="btn"
+                            title="A range that excludes the partner → IP_NOT_ALLOWED"
+                            onClick={() => setIpDrafts((d) => ({ ...d, [id]: "203.0.113.0/24" }))}
+                          >
+                            Narrow
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  },
+                ],
+                [
+                  "API breaker",
+                  (r) => {
+                    const b = (r.breaker ?? {}) as Record<string, unknown>;
+                    const { open, failures, ...rest } = b;
+                    return (
+                      <span>
+                        {statusPill(open ? "OPEN" : "CLOSED")} failures {txt(failures)}
+                        {Object.keys(rest).length > 0 && <code className={s.small}> {JSON.stringify(rest)}</code>}
+                      </span>
+                    );
+                  },
+                ],
+                ["Cert", (r) => <code className={s.small}>{txt(r.certFingerprint)}</code>],
+                [
+                  "Registered URLs",
+                  (r) => (
+                    <div className={s.urls}>
+                      <code>register {txt(r.registerUserUrl)}</code>
+                      <code>notify {txt(r.notifyUrl)}</code>
+                      <code>api {txt(r.apiBaseUrl)}</code>
+                      <code>orders {txt(r.createOrderUrl)}</code>
+                    </div>
+                  ),
+                ],
+                ["Merchant account", (r) => <code>{txt(r.merchantAccount)}</code>],
+              ]}
+            />
+          </section>
+          <section className="panel">
+            <h2>Action log</h2>
+            <ActionLog log={actionLog} />
           </section>
         </div>
       )}
@@ -490,26 +1302,19 @@ export default function AdminPage() {
             <h2>Bank chaos</h2>
             {problem("bankChaos")}
             {bankChaos &&
-              (
-                [
-                  ["dropResultCallback", "Drop result callback (bank debits but never tells the portal → recovery)"],
-                  ["failDebit", "Fail debit (bank answers FAILED / DEBIT_FAILED)"],
-                  ["failRefund", "Fail refund (refund → FAILED)"],
-                  ["settlementMismatch", "Settlement mismatch (tamper with the daily file)"],
-                ] as [keyof BankChaos, string][]
-              ).map(([k, label]) => (
+              Object.keys(bankChaos).map((k) => (
                 <label key={k} className={s.toggle}>
                   <input
                     type="checkbox"
                     checked={!!bankChaos[k]}
                     onChange={(e) =>
                       act(`Bank chaos ${k}=${e.target.checked}`, () =>
-                        api(`${BANK}/api/v1/admin/chaos`, { method: "PUT", body: { ...bankChaos, [k]: e.target.checked } }),
+                        api(`${BANK}/api/v1/admin/chaos`, { method: "PUT", body: { [k]: e.target.checked } }),
                       )
                     }
                   />
                   <span>
-                    <code>{k}</code> {label}
+                    <code>{k}</code> {BANK_CHAOS_HELP[k] ?? ""}
                   </span>
                 </label>
               ))}
@@ -522,8 +1327,8 @@ export default function AdminPage() {
               <>
                 <div className={s.toggle}>
                   <span>
-                    <code>webhookFailCount</code> answer the next N webhooks with HTTP 500 (now{" "}
-                    <b>{partnerChaos.webhookFailCount}</b>)
+                    <code>notifyFailCount</code> answer the next N payment notifications with HTTP 500 (2 → retry topics,
+                    4 → dead-letter + ops alert). Now <b>{String(partnerChaos.notifyFailCount ?? 0)}</b>
                   </span>
                 </div>
                 <div className={s.toolbar}>
@@ -531,17 +1336,17 @@ export default function AdminPage() {
                     className="input"
                     type="number"
                     min={0}
-                    style={{ width: 90 }}
-                    value={failCountDraft ?? String(partnerChaos.webhookFailCount ?? 0)}
+                    style={{ flex: "0 0 90px" }}
+                    value={failCountDraft ?? String(partnerChaos.notifyFailCount ?? 0)}
                     onChange={(e) => setFailCountDraft(e.target.value)}
                   />
                   <button
                     className="btn"
                     onClick={() =>
-                      act("Partner chaos webhookFailCount", () =>
+                      act("Partner chaos notifyFailCount", () =>
                         api(`${PARTNER}/api/v1/admin/chaos`, {
                           method: "PUT",
-                          body: { ...partnerChaos, webhookFailCount: Math.max(0, Number(failCountDraft ?? 0) || 0) },
+                          body: { notifyFailCount: Math.max(0, Math.floor(Number(failCountDraft ?? partnerChaos.notifyFailCount ?? 0)) || 0) },
                         }),
                       ).then(() => setFailCountDraft(null))
                     }
@@ -549,35 +1354,49 @@ export default function AdminPage() {
                     Apply
                   </button>
                 </div>
-                <label className={s.toggle}>
-                  <input
-                    type="checkbox"
-                    checked={!!partnerChaos.ignoreWebhooks}
-                    onChange={(e) =>
-                      act(`Partner chaos ignoreWebhooks=${e.target.checked}`, () =>
-                        api(`${PARTNER}/api/v1/admin/chaos`, {
-                          method: "PUT",
-                          body: { ...partnerChaos, ignoreWebhooks: e.target.checked },
-                        }),
-                      )
-                    }
-                  />
-                  <span>
-                    <code>ignoreWebhooks</code> answer 200 but do nothing (forces the status-check fallback)
-                  </span>
-                </label>
+                {Object.keys(partnerChaos)
+                  .filter((k) => typeof partnerChaos[k] === "boolean")
+                  .map((k) => (
+                    <label key={k} className={s.toggle}>
+                      <input
+                        type="checkbox"
+                        checked={!!partnerChaos[k]}
+                        onChange={(e) =>
+                          act(`Partner chaos ${k}=${e.target.checked}`, () =>
+                            api(`${PARTNER}/api/v1/admin/chaos`, { method: "PUT", body: { [k]: e.target.checked } }),
+                          )
+                        }
+                      />
+                      <span>
+                        <code>{k}</code> {PARTNER_CHAOS_HELP[k] ?? ""}
+                      </span>
+                    </label>
+                  ))}
               </>
             )}
           </section>
 
           <section className="panel">
-            <h2>Jobs</h2>
+            <h2>Jobs (also run on their own every 10 s)</h2>
             <div className={s.buttons}>
+              <button className="btn" onClick={() => runJob("Run recovery", `${PORTAL}/api/v1/admin/jobs/recovery`)}>
+                Run recovery
+              </button>
+              <button className="btn" onClick={() => runJob("Run expiry", `${PORTAL}/api/v1/admin/jobs/expiry`, {})}>
+                Run expiry
+              </button>
               <button
                 className="btn"
-                onClick={() => act("Run recovery", () => api(`${PORTAL}/api/v1/admin/jobs/recovery`, { method: "POST" }))}
+                title="Expires every PENDING / INITIATED payment now (releases holds)"
+                onClick={() => runJob("Expire all open payments", `${PORTAL}/api/v1/admin/jobs/expiry`, { force: true })}
               >
-                Run recovery now
+                Expire all open payments
+              </button>
+              <button
+                className="btn"
+                onClick={() => runJob("Run refund recovery", `${PORTAL}/api/v1/admin/jobs/refund-recovery`)}
+              >
+                Run refund recovery
               </button>
               <button
                 className="btn"
@@ -590,36 +1409,42 @@ export default function AdminPage() {
               >
                 Run daily settlement
               </button>
+            </div>
+            <div className={s.buttons} style={{ marginTop: 10 }}>
               <button className="btn" onClick={clearTrace}>
                 Clear all traces
               </button>
-              <button
-                className="btn danger"
-                onClick={() => {
-                  if (window.confirm("Reset all services? Clears payments, orders, bank transactions (balances back to seed), consents, chaos and trace."))
-                    void act("Reset all", () =>
-                      Promise.all(
-                        [PORTAL, BANK, PARTNER].map(base => api(`${base}/api/v1/admin/reset`, { method: "POST" })),
-                      ),
-                    );
-                }}
-              >
+              <button className="btn danger" onClick={resetAll}>
                 Reset all data
               </button>
             </div>
+            {jobResult && (
+              <div className={s.result}>
+                <h3>{jobResult.label}</h3>
+                <pre>{JSON.stringify(jobResult.data, null, 2)}</pre>
+              </div>
+            )}
             {settlement != null && (
               <div className={s.result}>
                 <h3>Last settlement result</h3>
                 {(() => {
-                  const r = settlement as { matched?: boolean; mismatches?: unknown[]; date?: string };
+                  const r = settlement as {
+                    date?: string;
+                    entries?: number;
+                    matched?: number;
+                    fixed?: number;
+                    mismatches?: unknown[];
+                  };
+                  const bad = Array.isArray(r.mismatches) && r.mismatches.length > 0;
                   return (
                     <>
                       <p>
-                        {r.date ?? ""} {statusPill(r.matched ? "MATCHED" : "MISMATCH")}
+                        {r.date ?? ""} {statusPill(bad ? "MISMATCH" : "MATCHED")} {r.matched ?? "?"}/{r.entries ?? "?"} matched
+                        {r.fixed ? `, ${r.fixed} fixed` : ""}
                       </p>
-                      {Array.isArray(r.mismatches) && r.mismatches.length > 0 && (
+                      {bad && (
                         <ul className={s.mismatches}>
-                          {r.mismatches.map((m, i) => (
+                          {r.mismatches!.map((m, i) => (
                             <li key={i}>{String(m)}</li>
                           ))}
                         </ul>
@@ -634,95 +1459,12 @@ export default function AdminPage() {
 
           <section className="panel">
             <h2>Action log</h2>
-            {actionLog.length === 0 ? (
-              <div className={s.empty}>No actions yet.</div>
-            ) : (
-              <ul className={s.actionLog}>
-                {actionLog.map((a, i) => (
-                  <li key={i} data-ok={a.ok}>
-                    <time>{a.ts}</time> {a.text}
-                  </li>
-                ))}
-              </ul>
-            )}
+            <ActionLog log={actionLog} />
           </section>
         </div>
       )}
 
       {tab === "Scenarios" && <Scenarios />}
     </main>
-  );
-}
-
-const SCENARIOS: { name: string; steps: ReactNode[]; expect: string }[] = [
-  {
-    name: "Happy path",
-    steps: [
-      "Simulator: log in as alice / 1234 → Mini apps → Movie tickets.",
-      "Sign in with KB → Allow → Buy “Dune: Part Three” → Approve → PIN 1234.",
-      "Ticket appears; X or Close returns to the list.",
-    ],
-    expect: "Payment PAID, webhook DELIVERED, order DELIVERED. Phases 1–6, 8 and 10 covered.",
-  },
-  {
-    name: "Cancel",
-    steps: ["Buy any movie, then tap Cancel on the payment sheet."],
-    expect: "Steps 30–32; payment CANCELLED, page shows “Payment cancelled”.",
-  },
-  {
-    name: "Insufficient funds",
-    steps: ["Log out, log in as bob / 1234 (USD 3.00).", "Buy “Expensive IMAX” (m3, 25.00) and approve."],
-    expect: "Receipt FAILED with INSUFFICIENT_FUNDS; payment FAILED, order FAILED, no bank transaction.",
-  },
-  {
-    name: "Lost bank result → recovery",
-    steps: [
-      "Actions: turn on dropResultCallback.",
-      "Pay as alice. The bank debits but the portal stays PROCESSING.",
-      "Wait for the recovery job or press “Run recovery now”.",
-    ],
-    expect: "Steps 41–43: portal asks the bank, applies PAID, then the webhook delivers the ticket.",
-  },
-  {
-    name: "Webhook retries",
-    steps: ["Actions: set webhookFailCount = 3 and Apply.", "Buy a ticket."],
-    expect: "Webhooks tab: attempts climb with lastStatusCode 500 and a nextAttemptAt, then DELIVERED.",
-  },
-  {
-    name: "Webhook ignored → status-check fallback",
-    steps: ["Actions: turn on ignoreWebhooks.", "Buy a ticket."],
-    expect: "The partner page polls the order; the partner checks the portal (51–53) and delivers.",
-  },
-  {
-    name: "Partial + full refund",
-    steps: ["Partner page → My orders → “Refund 1.00”, then “Refund all”."],
-    expect: "Steps 55–60; order PARTIALLY_REFUNDED then REFUNDED; escrow debited, customer credited.",
-  },
-  {
-    name: "Settlement mismatch",
-    steps: ["Run daily settlement once (should match).", "Turn on settlementMismatch and run it again."],
-    expect: "Steps 44–46; Reconciliations shows a mismatch entry with text.",
-  },
-];
-
-function Scenarios() {
-  return (
-    <section className={s.scenarios}>
-      {SCENARIOS.map((sc, i) => (
-        <article key={sc.name} className="panel">
-          <h3>
-            {i + 1}. {sc.name}
-          </h3>
-          <ol>
-            {sc.steps.map((st, j) => (
-              <li key={j}>{st}</li>
-            ))}
-          </ol>
-          <p>
-            <b>Expect:</b> {sc.expect}
-          </p>
-        </article>
-      ))}
-    </section>
   );
 }

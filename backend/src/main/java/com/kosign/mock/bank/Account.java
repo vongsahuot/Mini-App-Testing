@@ -13,11 +13,17 @@ import java.util.List;
 @Table(name = "accounts")
 public class Account {
     @Id public String accountNo;
-    /** Null for the bank's own settlement (escrow) account. */
+    /** Null for the merchant settlement account. */
     public String customerId;
     public String name;
     @Column(precision = 14, scale = 2) public BigDecimal balance;
+    /** Funds on hold by Init Payment, not yet debited. */
+    @Column(precision = 14, scale = 2) public BigDecimal held = new BigDecimal("0.00");
     public String currency;
+
+    public BigDecimal available() {
+        return balance.subtract(held);
+    }
 
     public interface Repo extends JpaRepository<Account, String> {
         List<Account> findByCustomerIdOrderByAccountNo(String customerId);

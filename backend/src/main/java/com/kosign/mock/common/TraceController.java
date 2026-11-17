@@ -31,11 +31,12 @@ public class TraceController {
         return Json.obj("ok", true);
     }
 
-    /** Clients (bank app, simulator, partner page) report the steps they receive. */
+    /** Clients (MB App, partner page, SDK, partner app) report the steps they receive. */
     @PostMapping
     public Map<String, Object> report(@RequestBody JsonNode body) {
-        String actor = Json.required(body, "actor");
-        trace.record(actor, body.path("step").asInt(0), Json.required(body, "title"), Json.str(body, "detail"), Json.str(body, "ref"));
+        String step = Json.str(body, "step");
+        trace.record(Json.required(body, "actor"), step == null || step.isBlank() ? null : step,
+                Json.str(body, "flow"), Json.required(body, "title"), Json.str(body, "detail"), Json.str(body, "ref"));
         return Json.obj("ok", true);
     }
 }

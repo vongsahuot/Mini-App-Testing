@@ -11,6 +11,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
+/** Core Banking journal: one row per posting attempt (payment debit/credit or refund). */
 @Entity
 @Table(name = "transactions")
 public class BankTxn {
@@ -18,7 +19,7 @@ public class BankTxn {
 
     @Id public String txnId;
     public String type;
-    public String paymentId;
+    public String paymentRef;
     public String refundId;
     public String debitAccount;
     public String creditAccount;
@@ -29,11 +30,11 @@ public class BankTxn {
     public Instant createdAt;
 
     public interface Repo extends JpaRepository<BankTxn, String> {
-        Optional<BankTxn> findFirstByPaymentIdAndTypeOrderByCreatedAtDesc(String paymentId, String type);
+        Optional<BankTxn> findFirstByPaymentRefAndTypeAndStatus(String paymentRef, String type, String status);
 
-        Optional<BankTxn> findFirstByPaymentIdAndTypeAndStatus(String paymentId, String type, String status);
+        Optional<BankTxn> findFirstByPaymentRefAndTypeOrderByCreatedAtDesc(String paymentRef, String type);
 
-        Optional<BankTxn> findFirstByRefundId(String refundId);
+        Optional<BankTxn> findFirstByRefundIdOrderByCreatedAtDesc(String refundId);
 
         List<BankTxn> findByStatusOrderByCreatedAt(String status);
 

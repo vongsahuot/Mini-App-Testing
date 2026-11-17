@@ -6,124 +6,185 @@ import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.util.Log
 import android.view.ViewGroup
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import com.kosign.minibank.AppSession
 import com.kosign.minibank.AppViewModel
 import com.kosign.minibank.Bridge
-import com.kosign.minibank.ConsentRequest
-import com.kosign.minibank.PaymentRequest
-import com.kosign.minibank.Receipt
-import com.kosign.minibank.money
+import com.kosign.minibank.WebSession
 import com.kosign.minibank.originOf
+import kotlinx.coroutines.delay
 import org.json.JSONObject
 
 private const val TAG = "WebAppScreen"
+private const val LOAD_TIMEOUT_MS = 15_000L
+
+/** Load state of the entry page (native error + Retry, step 2:25a). */
+private class LoadState {
+    var attempt by mutableStateOf(0)
+    var finished by mutableStateOf(false)
+    var error by mutableStateOf<String?>(null)
+
+    fun retry() {
+        error = null
+        finished = false
+        attempt++
+    }
+}
 
 @Composable
 fun WebAppScreen(vm: AppViewModel) {
-    val app = vm.appSession ?: return
+    val web = vm.webApp ?: return
     val context = LocalContext.current
-    val webView = remember(app.sessionId) { createWebView(context, vm, app) }
+    val load = remember(web.id) { LoadState() }
+    val webView = remember(web.id) { createWebView(context, vm, web, load) }
 
     DisposableEffect(webView) {
         onDispose {
+            // 4:21: remove the bridge with the WebView. Cookies / storage (the customer's data store) are kept.
             webView.stopLoading()
-            webView.removeJavascriptInterface("KosignNative")
+            webView.removeJavascriptInterface(Bridge.JS_NAME)
             webView.destroy()
         }
     }
 
+    // Watchdog: the entry page must finish loading in ~15 s.
+    LaunchedEffect(webView, load.attempt) {
+        delay(LOAD_TIMEOUT_MS)
+        if (!load.finished && load.error == null) {
+            load.error = "The page didn't load within ${LOAD_TIMEOUT_MS / 1000} s"
+            webView.stopLoading()
+        }
+    }
+    LaunchedEffect(load.error) {
+        load.error?.let { vm.onWebLoadFailed(it) }
+    }
+
     BackHandler {
-        if (webView.canGoBack()) webView.goBack() else vm.closeWebApp("back button")
+        if (load.error == null && webView.canGoBack()) webView.goBack() else vm.closeMiniApp("back button")
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(app.appName) },
+                title = { Text("${web.detail.icon} ${web.detail.name}") },
                 actions = {
-                    IconButton(onClick = { vm.closeWebApp("X button") }) {
+                    IconButton(onClick = { vm.closeMiniApp("native X") }) {
                         Icon(Icons.Filled.Close, contentDescription = "Close")
                     }
                 },
             )
         },
     ) { padding ->
-        AndroidView(
-            factory = { webView },
-            modifier = Modifier
+        Box(
+            Modifier
                 .fillMaxSize()
                 .padding(padding),
-        )
-    }
+        ) {
+            AndroidView(factory = { webView }, modifier = Modifier.fillMaxSize())
 
-    vm.consentRequest?.let { ConsentSheet(it, vm) }
-    vm.paymentRequest?.let { PaymentSheet(it, vm) }
-    vm.receipt?.let { ReceiptDialog(it, vm) }
+            val err = load.error
+            if (err == null && !load.finished) {
+                LinearProgressIndicator(Modifier.fillMaxWidth())
+            }
+            if (err != null) {
+                Surface(Modifier.fillMaxSize()) {
+                    Column(
+                        Modifier
+                            .fillMaxSize()
+                            .padding(32.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                    ) {
+                        Text("😕", fontSize = 48.sp)
+                        Spacer(Modifier.height(8.dp))
+                        Text("Can't load ${web.detail.name}", style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            err,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                        )
+                        Spacer(Modifier.height(20.dp))
+                        Button(onClick = {
+                            load.retry()
+                            web.detail.entryUrl?.let { webView.loadUrl(it) }
+                        }) { Text("Retry") }
+                        TextButton(onClick = { vm.closeMiniApp("native X") }) { Text("Close") }
+                    }
+                }
+            }
+        }
+    }
 }
 
 @SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
-private fun createWebView(context: Context, vm: AppViewModel, app: AppSession): WebView {
+private fun createWebView(context: Context, vm: AppViewModel, web: WebSession, load: LoadState): WebView {
+    val allowed = web.detail.allowedOrigins
     val webView = WebView(context)
     webView.layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-    webView.settings.javaScriptEnabled = true
-    webView.settings.domStorageEnabled = true
+    webView.settings.apply {
+        javaScriptEnabled = true
+        domStorageEnabled = true
+        // No pop-up windows: a window.open() target can't get the bridge or escape the origin check.
+        setSupportMultipleWindows(false)
+        javaScriptCanOpenWindowsAutomatically = false
+        allowFileAccess = false
+        allowContentAccess = false
+    }
 
     webView.webViewClient = object : WebViewClient() {
         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
             val target = request.url
             val origin = originOf(target.toString())
-            if (origin != null && origin in app.allowedOrigins) return false
-            // Navigation to a non-allowed origin (or a non-http scheme): open outside the WebView.
+            if (origin != null && origin in allowed) return false
+            if (!request.isForMainFrame) {
+                Log.w(TAG, "Blocked sub-frame navigation to $target")
+                return true
+            }
+            // Navigation to another origin (or a non-http scheme): open outside the WebView.
             Log.i(TAG, "Opening externally: $target")
             try {
                 view.context.startActivity(Intent(Intent.ACTION_VIEW, target).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -132,205 +193,44 @@ private fun createWebView(context: Context, vm: AppViewModel, app: AppSession): 
             }
             return true
         }
+
+        override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
+            Log.d(TAG, "page started $url")
+        }
+
+        override fun onPageFinished(view: WebView, url: String?) {
+            if (load.error == null) load.finished = true
+        }
+
+        override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
+            if (request.isForMainFrame) {
+                load.error = "${error.description} (error ${error.errorCode})"
+            }
+        }
+
+        override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, errorResponse: WebResourceResponse) {
+            if (request.isForMainFrame && errorResponse.statusCode >= 500) {
+                load.error = "The page answered HTTP ${errorResponse.statusCode}"
+            }
+        }
     }
 
     // Every call is posted to the main thread by Bridge; the origin is read from the WebView there.
     webView.addJavascriptInterface(Bridge { json ->
-        val pageOrigin = originOf(webView.url)
-        vm.onBridgeMessage(json, pageOrigin) { id, ok, payload -> reply(webView, id, ok, payload) }
-    }, "KosignNative")
+        vm.onBridgeMessage(json, originOf(webView.url)) { id, ok, payload -> reply(webView, allowed, id, ok, payload) }
+    }, Bridge.JS_NAME)
 
-    webView.loadUrl(app.url)
+    web.detail.entryUrl?.let { webView.loadUrl(it) }
     return webView
 }
 
-private fun reply(webView: WebView, id: String, ok: Boolean, payload: JSONObject) {
-    val js = "window.__kosignBridgeCallback(${JSONObject.quote(id)}, $ok, $payload)"
-    webView.evaluateJavascript(js, null)
-}
-
-// ---------------------------------------------------------------------------------------------
-// Consent sheet (steps 11–12)
-// ---------------------------------------------------------------------------------------------
-
-@Composable
-private fun ConsentSheet(req: ConsentRequest, vm: AppViewModel) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    // Swipe-down / scrim tap / back = Deny.
-    ModalBottomSheet(onDismissRequest = { vm.answerConsent(false) }, sheetState = sheetState) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp)
-                .padding(bottom = 24.dp),
-        ) {
-            Text("🔐", fontSize = 40.sp)
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "${req.partnerName} wants to access",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Spacer(Modifier.height(12.dp))
-            req.scopeLabels.forEach { label ->
-                Text("•  $label", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(vertical = 4.dp))
-            }
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "KB Bank shares only this information with ${req.partnerName}. You can revoke it later.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(20.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedButton(onClick = { vm.answerConsent(false) }, modifier = Modifier.weight(1f)) { Text("Deny") }
-                Button(onClick = { vm.answerConsent(true) }, modifier = Modifier.weight(1f)) { Text("Allow") }
-            }
-        }
+/** `window.__mbappBridgeCallback(id, ok, payload)`. Successful payloads only go to an allowed origin. */
+private fun reply(webView: WebView, allowed: List<String>, id: String, ok: Boolean, payload: JSONObject) {
+    val origin = originOf(webView.url)
+    if (ok && (origin == null || origin !in allowed)) {
+        Log.w(TAG, "Dropping bridge reply $id: page is now at $origin")
+        return
     }
-}
-
-// ---------------------------------------------------------------------------------------------
-// Payment sheet (steps 29–33)
-// ---------------------------------------------------------------------------------------------
-
-@Composable
-private fun PaymentSheet(req: PaymentRequest, vm: AppViewModel) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var selected by remember(req) { mutableStateOf(req.accounts.firstOrNull()?.accountNo) }
-    var askPin by remember(req) { mutableStateOf(false) }
-
-    // Swipe-down / scrim tap / back = Cancel.
-    ModalBottomSheet(onDismissRequest = { vm.answerPayment(null) }, sheetState = sheetState) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp)
-                .padding(bottom = 24.dp),
-        ) {
-            Text("Confirm payment", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(16.dp))
-            Text(req.merchantName, style = MaterialTheme.typography.titleMedium)
-            if (req.description.isNotBlank()) {
-                Text(req.description, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Spacer(Modifier.height(8.dp))
-            Text(
-                money(req.amount, req.currency),
-                style = MaterialTheme.typography.displaySmall,
-                fontWeight = FontWeight.Bold,
-                color = BankPurple,
-            )
-            Text(
-                "Payment ${req.paymentId}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(16.dp))
-            HorizontalDivider()
-            Spacer(Modifier.height(8.dp))
-            Text("Pay from", style = MaterialTheme.typography.labelLarge)
-            req.accounts.forEach { acc ->
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .clickable { selected = acc.accountNo }
-                        .padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    RadioButton(selected = selected == acc.accountNo, onClick = { selected = acc.accountNo })
-                    Column {
-                        Text("${acc.name} · ${acc.accountNo}")
-                        Text(
-                            "Balance ${money(acc.balance, acc.currency)}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-            }
-            if (req.accounts.isEmpty()) Text("No accounts available", color = MaterialTheme.colorScheme.error)
-            Spacer(Modifier.height(20.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedButton(onClick = { vm.answerPayment(null) }, modifier = Modifier.weight(1f)) { Text("Cancel") }
-                Button(
-                    onClick = { askPin = true },
-                    enabled = selected != null,
-                    modifier = Modifier.weight(1f),
-                ) { Text("Approve") }
-            }
-        }
-    }
-
-    if (askPin) {
-        PinDialog(
-            onDismiss = { askPin = false },
-            onVerified = {
-                askPin = false
-                vm.answerPayment(selected)
-            },
-        )
-    }
-}
-
-/**
- * Mock of the biometric / device-PIN prompt that would unlock a hardware Keystore key used to sign
- * the paymentId. Here we just compare to the fixed mock PIN; the "key" is the login deviceSecret.
- */
-@Composable
-private fun PinDialog(onDismiss: () -> Unit, onVerified: () -> Unit) {
-    var pin by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf(false) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Enter PIN to sign") },
-        text = {
-            OutlinedTextField(
-                value = pin,
-                onValueChange = {
-                    pin = it.filter(Char::isDigit).take(6)
-                    error = false
-                },
-                label = { Text("PIN") },
-                singleLine = true,
-                isError = error,
-                supportingText = { Text(if (error) "Wrong PIN" else "Mock biometrics — PIN is ${AppViewModel.MOCK_PIN}") },
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = { if (pin == AppViewModel.MOCK_PIN) onVerified() else error = true }) { Text("Confirm") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Back") } },
-    )
-}
-
-// ---------------------------------------------------------------------------------------------
-// Receipt (after step 40)
-// ---------------------------------------------------------------------------------------------
-
-@Composable
-private fun ReceiptDialog(receipt: Receipt, vm: AppViewModel) {
-    val paid = receipt.status == "PAID"
-    AlertDialog(
-        onDismissRequest = { vm.dismissReceipt() },
-        icon = { Text(if (paid) "✅" else "❌", fontSize = 32.sp) },
-        title = { Text(if (paid) "Payment successful" else "Payment failed") },
-        text = {
-            Column {
-                Text(
-                    money(receipt.amount, receipt.currency),
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = if (paid) BankPurple else Color(0xFFB3261E),
-                )
-                Spacer(Modifier.height(8.dp))
-                Text("Status: ${receipt.status}")
-                receipt.bankTxnId?.let { Text("Bank txn: $it") }
-                receipt.reason?.let { Text("Reason: $it") }
-            }
-        },
-        confirmButton = { TextButton(onClick = { vm.dismissReceipt() }) { Text("Done") } },
-    )
+    val cb = "window.${Bridge.JS_CALLBACK}"
+    webView.evaluateJavascript("$cb && $cb(${JSONObject.quote(id)}, $ok, $payload)", null)
 }

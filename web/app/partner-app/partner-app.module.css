@@ -1,0 +1,352 @@
+/* Starlight Cinema — the partner's own app (not MB App): midnight + gold brand, own top bar */
+.app {
+  --a-bg: #0d0b1a;
+  --a-card: #181530;
+  --a-line: #2c2750;
+  --a-fg: #f2f0ff;
+  --a-muted: #a8a3c7;
+  --a-gold: #f5c542;
+  --a-accent: #ff4f7b;
+  min-height: 100dvh;
+  background: radial-gradient(140% 50% at 50% 0%, #251c52 0%, var(--a-bg) 65%);
+  color: var(--a-fg);
+  font-family: var(--font-sans);
+  position: relative;
+  color-scheme: dark;
+}
+.bar {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: max(12px, env(safe-area-inset-top, 0px)) 14px 12px;
+  background: linear-gradient(90deg, #f5c542, #ffb238);
+  color: #1b1405;
+}
+.logo {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #1b1405;
+  color: var(--a-gold);
+  font-size: 18px;
+  flex: none;
+}
+.brand {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.brand strong {
+  font-size: 17px;
+  letter-spacing: 0.01em;
+}
+.brand small {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  padding: 0 4px;
+}
+.barBtn {
+  background: rgba(27, 20, 5, 0.12);
+  border: 0;
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  color: #1b1405;
+}
+.main {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 14px 14px 32px;
+}
+.banner {
+  background: var(--a-gold);
+  color: #2a1a00;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+.banner a {
+  color: #2a1a00;
+  font-weight: 600;
+}
+.account,
+.linkCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--a-card);
+  border: 1px solid var(--a-line);
+  border-radius: 16px;
+  padding: 14px;
+}
+.linkCard {
+  flex-direction: column;
+  align-items: stretch;
+  border-color: var(--a-gold);
+}
+.hello {
+  font-weight: 600;
+  font-size: 16px;
+}
+.sub {
+  color: var(--a-muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.sub code {
+  font-size: 12px;
+}
+.kb {
+  background: linear-gradient(135deg, #1d6fb8, #3d8fdc);
+  color: #fff;
+  border: 0;
+  border-radius: 12px;
+  padding: 11px 16px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ghost {
+  background: transparent;
+  color: var(--a-fg);
+  border: 1px solid var(--a-line);
+  border-radius: 999px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.kb:disabled,
+.buy:disabled,
+.ghost:disabled,
+.barBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.notice {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+  border: 1px solid;
+  overflow-wrap: anywhere;
+}
+.notice button {
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+}
+.ok {
+  border-color: #3fbf7f;
+  background: #0f2a20;
+  color: #a6f0c8;
+}
+.warn {
+  border-color: var(--a-gold);
+  background: #2b2410;
+  color: #ffe39a;
+}
+.err {
+  border-color: var(--a-accent);
+  background: #35101d;
+  color: #ffb3c3;
+}
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin: 16px 0 10px;
+}
+.tabs button {
+  flex: 1;
+  background: transparent;
+  border: 1px solid var(--a-line);
+  color: var(--a-muted);
+  border-radius: 999px;
+  padding: 8px;
+  cursor: pointer;
+}
+.tabs button[aria-pressed="true"] {
+  background: var(--a-gold);
+  border-color: var(--a-gold);
+  color: #1b1405;
+  font-weight: 600;
+}
+.tabs button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.empty {
+  color: var(--a-muted);
+  text-align: center;
+  padding: 24px 0;
+}
+.movie {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--a-card);
+  border: 1px solid var(--a-line);
+  border-radius: 16px;
+  padding: 10px;
+}
+.poster {
+  width: 56px;
+  height: 76px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  font-size: 28px;
+  background: linear-gradient(160deg, #3a2f7a, #15112b);
+  flex: none;
+}
+.info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.info span {
+  color: var(--a-muted);
+  font-size: 13px;
+}
+.info .price {
+  color: var(--a-gold);
+  font-weight: 600;
+  font-family: var(--font-mono);
+}
+.buy {
+  background: var(--a-accent);
+  color: #fff;
+  border: 0;
+  border-radius: 999px;
+  padding: 8px 18px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.order {
+  background: var(--a-card);
+  border: 1px solid var(--a-line);
+  border-radius: 16px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.orderTop {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: baseline;
+}
+.status {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  border-radius: 999px;
+  padding: 1px 8px;
+  border: 1px solid var(--a-muted);
+  color: var(--a-muted);
+  white-space: nowrap;
+}
+.status[data-status="DELIVERED"] {
+  color: #7be0a9;
+  border-color: #7be0a9;
+}
+.status[data-status="FAILED"],
+.status[data-status="EXPIRED"] {
+  color: #ff8aa2;
+  border-color: #ff8aa2;
+}
+.status[data-status="REFUNDED"],
+.status[data-status="PARTIALLY_REFUNDED"],
+.status[data-status="REFUND_PENDING"] {
+  color: var(--a-gold);
+  border-color: var(--a-gold);
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 6, 18, 0.8);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  z-index: 10;
+  padding: 16px;
+  text-align: center;
+}
+.spinner {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 3px solid var(--a-line);
+  border-top-color: var(--a-gold);
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.ticket {
+  background: linear-gradient(180deg, #221d44, #14112a);
+  border: 1px dashed var(--a-gold);
+  border-radius: 18px;
+  padding: 20px;
+  width: min(340px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  text-align: left;
+}
+.ticket > strong {
+  font-size: 20px;
+}
+.ticket small {
+  color: var(--a-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 11px;
+  display: block;
+}
+.ticketRow {
+  display: flex;
+  gap: 24px;
+}
+.ticketRow b {
+  font-size: 22px;
+  color: var(--a-gold);
+}

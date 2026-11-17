@@ -19,7 +19,7 @@ public final class Json {
 
     public static String str(JsonNode n, String field) {
         JsonNode v = n == null ? null : n.get(field);
-        return v == null || v.isNull() ? null : v.asText();
+        return v == null || v.isNull() || v.isMissingNode() ? null : v.asText();
     }
 
     public static String required(JsonNode n, String field) {
@@ -30,7 +30,7 @@ public final class Json {
 
     public static BigDecimal money(JsonNode n, String field) {
         JsonNode v = n == null ? null : n.get(field);
-        if (v == null || v.isNull()) return null;
+        if (v == null || v.isNull() || v.isMissingNode()) return null;
         try {
             return new BigDecimal(v.asText()).setScale(2, RoundingMode.HALF_UP);
         } catch (NumberFormatException e) {

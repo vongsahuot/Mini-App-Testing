@@ -8,6 +8,11 @@ spring:
         default_schema: partner
 
 mock:
-  actor: PS
-  client-id: movie-tickets
-  client-secret: ${PARTNER_SECRET:partner-secret-movie}
+  client-id: starlight
+  # ES256 private key of the partner server (PKCS#8, base64). Mock only.
+  partner-private-key: MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgITFRrjF82ebHY0yuVURxw/FRtCX3btjmXwPdrV0yGQ+hRANCAARzbq+uiRsFp7dpA2o9npM+hSIHC32DsNSwunKlfNzjk9h/GAkFgCwHg4hYUgmLyV/dWBPDZCuRE55ExvmexfO0
+  order-ttl-minutes: 15
+  # The partner's own Mini Apps and their integration types (it knows which of its clients is which).
+  apps: starlight-web=webview,vip-screening=webview,starlight-native=api,starlight-sdk=sdk,starlight-app=a2a
+  # Orders still PENDING_PAYMENT after this long are checked with the bank's inquiry API.
+  inquiry-after-seconds: 20
